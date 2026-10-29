@@ -90,9 +90,9 @@ Rebuild vehicles and preview renders:
 ## Phone test builds and the website
 
 - `bash tools/build_release.sh` → signed `build/flowline.apk` (arm64).
-- The signing key is **outside the repo** in `C:\devlowline_keys\` (`flowline-release.jks` + password in `flowline-release.properties`). **Back this folder up** (e.g. to D: like Bubblop's key): without it, future versions cannot install over the old one.
+- The signing key is **outside the repo** in `C:\dev\flowline_keys\` (`flowline-release.jks` + password in `flowline-release.properties`). **Back this folder up** (e.g. to D: like Bubblop's key): without it, future versions cannot install over the old one.
 - Website: GitHub Pages from `docs/` → https://nicole292.github.io/flowline/ . The download button points at the latest GitHub Release asset `flowline.apk`, so publishing a new release updates the page automatically.
-- Raw downloaded sources (tree models, full texture sets) live in `C:\devlowline_raw\` and are not in the repo.
+- Raw downloaded sources (tree models, full texture sets) live in `C:\dev\flowline_raw\` and are not in the repo.
 
 ## Known issues
 
