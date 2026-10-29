@@ -142,7 +142,9 @@ func _build() -> void:
 	go.pressed.connect(func(): start_pressed.emit())
 	_start_panel.add_child(go)
 	var hint := _label(20, Color(1, 1, 1, 0.75), 4)
-	hint.text = "Left thumb: steer    Right thumb: brake    (Keyboard: arrows / A D, S or Space to brake)"
+	hint.text = "Left thumb: steer    Right thumb: brake    The car accelerates by itself"
+	if not OS.has_feature("mobile"):
+		hint.text += "    (Keyboard: arrows or A/D to steer, S or Space to brake)"
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.name = "Hint"
 	_start_panel.add_child(hint)
@@ -203,13 +205,14 @@ func _layout() -> void:
 			safe = Rect2(ds.position * k, ds.size * k)
 	var m := 28.0
 	_safe = safe.grow(-m)
-	position = Vector2.ZERO
-	size = vp
-	for overlay in [_start_panel, _pause_panel, _results_panel]:
-		overlay.position = Vector2.ZERO
-		overlay.size = vp
-		for c in overlay.get_children():
-			if c is ColorRect or c is Container:
+	# Sized explicitly (anchors are reset to top-left so Godot doesn't fight us).
+	for n in [self, _start_panel, _pause_panel, _results_panel]:
+		n.set_anchors_preset(Control.PRESET_TOP_LEFT)
+		n.position = Vector2.ZERO
+		n.size = vp
+		for c in n.get_children():
+			if n != self and (c is ColorRect or c is Container):
+				(c as Control).set_anchors_preset(Control.PRESET_TOP_LEFT)
 				(c as Control).position = Vector2.ZERO
 				(c as Control).size = vp
 	var s := _safe

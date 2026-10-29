@@ -19,6 +19,7 @@ const CRASH_TIME := 1.7
 var world: HighwayWorld
 var camera: ChaseCamera
 var hud: Hud
+var audio: AudioDirector
 var player_root: Node3D
 var player_view: CarVisual
 var model := VehicleModel.new()
@@ -35,6 +36,10 @@ var _prev_x := {}     # agent id -> x last frame
 var _crash := {}
 var _menu_t := 0.0
 var _flash: ColorRect
+var _fx: ColorRect
+var _fx_flow := 0.0
+var _fx_time := 0.0
+var _scraping := false
 
 # dev harness
 var _args := {}
@@ -72,9 +77,21 @@ func _ready() -> void:
 		sim.rng.seed = int(_args["seed"])
 	_prewarm_pools()
 
+	audio = AudioDirector.new()
+	add_child(audio)
+	audio.apply_settings(save.settings)
+
 	var layer := CanvasLayer.new()
 	layer.process_mode = Node.PROCESS_MODE_ALWAYS
 	add_child(layer)
+	_fx = ColorRect.new()
+	_fx.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_fx.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var fx_mat := ShaderMaterial.new()
+	fx_mat.shader = load("res://shaders/speed_fx.gdshader")
+	_fx.material = fx_mat
+	_fx.visible = false
+	layer.add_child(_fx)
 	_flash = ColorRect.new()
 	_flash.color = Color(1, 1, 1, 0)
 	_flash.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -83,10 +100,10 @@ func _ready() -> void:
 	hud = Hud.new()
 	hud.process_mode = Node.PROCESS_MODE_ALWAYS
 	layer.add_child(hud)
-	hud.start_pressed.connect(start_run)
-	hud.pause_pressed.connect(func(): set_paused(true))
-	hud.resume_pressed.connect(func(): set_paused(false))
-	hud.restart_pressed.connect(restart)
+	hud.start_pressed.connect(func(): audio.click(); start_run())
+	hud.pause_pressed.connect(func(): audio.click(); set_paused(true))
+	hud.resume_pressed.connect(func(): audio.click(); set_paused(false))
+	hud.restart_pressed.connect(func(): audio.click(); restart())
 
 	_reset_player()
 	_enter_menu()
@@ -152,6 +169,9 @@ func start_run() -> void:
 		_on_spawn(a)
 	camera.snap(player_root.position)
 	hud.show_playing()
+	audio.start_engine()
+	_fx.visible = true
+	_fx_flow = 0.0
 	_run_time = 0.0
 
 
@@ -168,6 +188,9 @@ func set_paused(on: bool) -> void:
 	state = State.PAUSED if on else State.PLAYING
 	get_tree().paused = on
 	hud.show_pause(on)
+	for p in audio.get_children():
+		if p is AudioStreamPlayer or p is AudioStreamPlayer3D:
+			p.stream_paused = on
 
 
 func _notification(what: int) -> void:
@@ -294,7 +317,9 @@ func _drive(dt: float) -> void:
 	model.step(dt, throttle, inp[1], inp[0])
 	var limit := HighwayWorld.BARRIER_X - 0.45 - player_view.width * 0.5
 	var impact := model.constrain(limit)
+	_scraping = absf(model.x) >= limit - 0.02 and absf(model.lat_vel) > 0.05 or impact > 0.0
 	if impact > 0.6:
+		_vibrate(25)
 		score.on_bump()
 		camera.kick(clampf(impact * 0.15, 0.1, 0.8), -signf(model.x))
 		hud.popup("SCRAPE", "Flow lost", Color(1, 0.4, 0.3))
@@ -315,9 +340,14 @@ func _drive(dt: float) -> void:
 				sub += "   x%d" % r["streak"]
 			var col: Color = [Color(0.85, 0.95, 1.0), Hud.ACCENT, Color(1.0, 0.85, 0.2)][r["tier"]]
 			hud.popup(r["name"], sub, col)
-			camera.kick(0.15 + 0.12 * r["tier"], signf(model.x - (p["agent"] as TrafficSim.Agent).x))
+			var ag: TrafficSim.Agent = p["agent"]
+			camera.kick(0.15 + 0.12 * r["tier"], signf(model.x - ag.x))
+			audio.near_miss(r["tier"], Vector3(ag.x, 0.8, ag.z))
+			_vibrate(12 + 10 * int(r["tier"]))
 			if r["flow_started"]:
 				hud.popup("FLOW DRIVE", "All points x2", Hud.FLOW_COL, true)
+				audio.flow_started()
+				_vibrate(60)
 
 	var hit := sim.collide(model.x, player_z, player_view.length, player_view.width)
 	_update_player_view(dt, inp[1])
@@ -327,7 +357,26 @@ func _drive(dt: float) -> void:
 	_maybe_rebase()
 	world.update(player_z)
 	camera.follow(dt, player_root.position, model.speed, model.top_speed, model.long_accel, model.lat_vel)
+	audio.update_engine(dt, model.speed, model.top_speed, throttle, _scraping)
+	_update_fx(dt)
 	hud.set_values(score.score, score.distance, model.speed, score.flow, score.flow_active, score.streak)
+
+
+func _update_fx(dt: float) -> void:
+	_fx_time += dt
+	_fx_flow = lerpf(_fx_flow, 1.0 if score.flow_active else 0.0, 1.0 - exp(-4.0 * dt))
+	var sf := smoothstep(0.55, 1.0, model.speed / model.top_speed)
+	var m := _fx.material as ShaderMaterial
+	m.set_shader_parameter("speed", sf)
+	m.set_shader_parameter("flow", _fx_flow)
+	m.set_shader_parameter("time_s", _fx_time)
+	world.environment.adjustment_saturation = 1.08 + 0.2 * _fx_flow
+	world.environment.glow_intensity = 0.55 + 0.35 * _fx_flow
+
+
+func _vibrate(ms: int) -> void:
+	if OS.has_feature("mobile"):
+		Input.vibrate_handheld(ms)
 
 
 func _update_player_view(dt: float, brake: float) -> void:
@@ -373,6 +422,8 @@ func _begin_crash(a: TrafficSim.Agent) -> void:
 	}
 	model.speed = a.speed * 0.6 + model.speed * 0.15
 	camera.kick(1.6, signf(dx))
+	audio.crash()
+	_vibrate(140)
 	_flash.color = Color(1, 1, 1, 0.55)
 	Engine.time_scale = 0.4
 	score.on_bump()
@@ -422,6 +473,8 @@ func _update_crash(dt: float) -> void:
 
 func _finish_run() -> void:
 	Engine.time_scale = 1.0
+	audio.stop_engine()
+	_fx.visible = false
 	state = State.RESULTS
 	var earned := score.cash_earned()
 	var prev_best := save.best_score

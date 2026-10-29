@@ -9,10 +9,10 @@ const NEAR_GAP := 1.25         ## metres of side clearance that still counts
 const TIER_GAPS := [0.35, 0.75] ## below these: INSANE, CLOSE; else NEAR
 const TIER_NAMES := ["NEAR MISS", "CLOSE CALL", "INSANE"]
 const TIER_POINTS := [100, 180, 300]
-const TIER_FLOW := [0.13, 0.19, 0.27]
+const TIER_FLOW := [0.20, 0.28, 0.38]
 const STREAK_WINDOW := 3.5
-const FLOW_GRACE := 2.5        ## seconds after a near miss before decay
-const FLOW_DECAY := 0.05       ## per second while building
+const FLOW_GRACE := 4.0        ## seconds after a near miss before decay
+const FLOW_DECAY := 0.03       ## per second while building
 const FLOW_DRAIN := 0.085      ## per second during Flow Drive
 const OVERTAKE_POINTS := 20
 
