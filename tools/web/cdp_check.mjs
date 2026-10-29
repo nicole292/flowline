@@ -56,10 +56,16 @@ const t0 = Date.now();
 await sleep(Number(secs) * 1000);
 await shot("menu");
 console.log("elapsed", ((Date.now() - t0) / 1000).toFixed(0), "s");
-await tap(180, 410);   // DRIVE button (left column)
-await sleep(6000);
+const taps = (process.env.TAPS || "180,410").split(";").map((p) => p.split(",").map(Number));
+for (const [x, y] of taps) {   // menu buttons to press, in order
+  await tap(x, y);
+  await sleep(1500);
+}
+await sleep(4000);
 await key("ArrowLeft", 600);
 await sleep(4000);
 await shot("play");
+const ev = await send("Runtime.evaluate", { expression: "JSON.stringify(Object.assign({}, window.__audio || {}, {ctx: undefined, state: window.__audio && window.__audio.ctx && window.__audio.ctx.state}))", returnByValue: true });
+console.log("AUDIO", ev.result && ev.result.value);
 proc.kill();
 process.exit(0);
