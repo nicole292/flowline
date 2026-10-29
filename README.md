@@ -49,7 +49,15 @@ Rejected options: Unity (needs an interactive account login and licence, and a m
 - [x] UI: Barlow font, amber accent, new start screen
 - [ ] Cars still look procedural up close (fronts especially) — the biggest remaining realism gap
 - [ ] Night / dusk variant, tunnels, rain
-**Stage 4 – Systems**: garage, upgrades, currency spend, missions/daily challenge, settings screen (volume sliders, sensitivity, tilt), music.
+**Stage 4 – Systems** (0.3.0)
+- [x] Garage: 7 cars (Vanta GT → Vortex), buy, 4 upgrades x 5 levels, paint (14) and rim colours (5)
+- [x] Body kits: flares, spoilers/wing, splitter, diffuser fins, vents, intakes, LED lights, two-tone roofs
+- [x] Modes: Endless, Two-Way (oncoming lanes, x2 points, +35% cash), Time Trial (checkpoints add time)
+- [x] Time of day: Daytime, Golden Hour (LV 3), Night (LV 5) with headlights and lamp pools
+- [x] Levels/XP with level-up cash, daily reward streak, rotating missions
+- [x] Settings: volumes, buttons/tilt steering, sensitivity, camera, battery saver, km/h or mph
+- [ ] Music, more environments (desert, snow), police chase, leaderboards
+- [ ] APK is 80 MB: compress the sky photos
 **Stage 5 – Mobile**: real-device profiling, quality tiers, safe-area check on notched phones, tilt controls.
 **Stage 6 – Release**: final name, icon, store assets, privacy policy, release signing, iOS via Codemagic.
 
