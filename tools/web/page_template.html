@@ -1,0 +1,149 @@
+<title>FLOWLINE</title>
+<meta name="description" content="FLOWLINE: weave through highway traffic, pass close to build Flow.">
+<meta name="theme-color" content="#0d0f12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="icon" type="image/png" href="icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;700&display=swap">
+<style>
+  /* Full-screen game, one deliberate dark look (asphalt at dusk + signal amber). */
+  :root {
+    --asphalt: #0d0f12;
+    --lane: #2a2f37;
+    --ink: #f2f3f5;
+    --muted: #9aa1ab;
+    --amber: #ffbd2e;
+    --font: "Barlow Semi Condensed", "Arial Narrow", system-ui, sans-serif;
+    color-scheme: dark;
+  }
+  html, body { height: 100%; margin: 0; background: var(--asphalt); color: var(--ink); overflow: hidden;
+               touch-action: none; -webkit-user-select: none; user-select: none; }
+  #canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
+  .screen { position: fixed; inset: 0; display: grid; place-items: center; background: var(--asphalt);
+            font-family: var(--font); text-align: center; z-index: 2;
+            padding: env(safe-area-inset-top, 0px) max(16px, env(safe-area-inset-right, 0px))
+                     env(safe-area-inset-bottom, 0px) max(16px, env(safe-area-inset-left, 0px)); }
+  .stack { display: grid; gap: 14px; justify-items: center; width: min(420px, 100%); }
+  .logo { font-weight: 700; font-size: clamp(44px, 11vw, 84px); letter-spacing: 0.04em; line-height: 1; }
+  .tag { color: var(--muted); font-size: 18px; text-wrap: balance; }
+  /* Loading bar drawn as a lane: dashed markings, amber fill. */
+  .lane { position: relative; width: 100%; height: 10px; border-radius: 5px; background: var(--lane); overflow: hidden; }
+  .lane::after { content: ""; position: absolute; inset: 4px 0; background:
+                 repeating-linear-gradient(90deg, rgba(255,255,255,0.18) 0 18px, transparent 18px 54px); }
+  .fill { position: absolute; inset: 0 auto 0 0; width: 0%; background: var(--amber); border-radius: 5px;
+          transition: width 0.2s linear; z-index: 1; }
+  .status { color: var(--muted); font-size: 15px; font-variant-numeric: tabular-nums; letter-spacing: 0.04em; }
+  .error { color: var(--amber); }
+  #rotate { display: none; z-index: 3; }
+  #rotate .phone { width: 44px; height: 76px; border: 3px solid var(--ink); border-radius: 10px;
+                   animation: turn 2.4s ease-in-out infinite; }
+  @keyframes turn { 0%, 30% { transform: rotate(0deg); } 60%, 100% { transform: rotate(-90deg); } }
+  @media (prefers-reduced-motion: reduce) { #rotate .phone { animation: none; transform: rotate(-90deg); } }
+  @media (orientation: portrait) and (pointer: coarse) { #rotate { display: grid; } }
+</style>
+
+<canvas id="canvas" tabindex="0"></canvas>
+
+<div id="loading" class="screen">
+  <div class="stack">
+    <div class="logo">FLOWLINE</div>
+    <div class="tag">Pass close to traffic to build Flow. Fill it for double points.</div>
+    <div class="lane" aria-hidden="true"><div class="fill" id="fill"></div></div>
+    <div class="status" id="status">Loading the highway · __TOTAL_MB__ MB</div>
+  </div>
+</div>
+
+<div id="rotate" class="screen">
+  <div class="stack">
+    <div class="phone" aria-hidden="true"></div>
+    <div class="logo" style="font-size:34px">Turn your phone sideways</div>
+    <div class="tag">FLOWLINE is played in landscape. Left thumb steers, right thumb brakes.</div>
+  </div>
+</div>
+
+<script>
+  // Large files are stored gzipped in parts (artifact files max 15 MB each).
+  // This loader joins and un-gzips them, then answers Godot's fetches.
+  (function () {
+    const PARTS = __PARTS__;
+    const realFetch = window.fetch.bind(window);
+    const fill = document.getElementById("fill");
+    const status = document.getElementById("status");
+    const totalPacked = Object.values(PARTS).reduce((s, p) => s + p.packed, 0);
+    let loaded = 0;
+
+    function show() {
+      const pct = Math.min(100, (loaded / totalPacked) * 100);
+      fill.style.width = pct.toFixed(1) + "%";
+      status.textContent = "Loading the highway · " + Math.round(pct) + "%";
+    }
+
+    async function fetchPart(name) {
+      const res = await realFetch(name);
+      if (!res.ok) throw new Error("Could not load " + name + " (" + res.status + ")");
+      const reader = res.body.getReader();
+      const chunks = [];
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        loaded += value.byteLength;
+        show();
+      }
+      return new Blob(chunks);
+    }
+
+    const cache = {};
+    function assemble(key) {
+      if (!cache[key]) {
+        const spec = PARTS[key];
+        cache[key] = Promise.all(spec.parts.map(fetchPart)).then(async (blobs) => {
+          const joined = new Blob(blobs);
+          const head = new Uint8Array(await joined.slice(0, 2).arrayBuffer());
+          const isGzip = head[0] === 0x1f && head[1] === 0x8b;
+          const data = isGzip
+            ? await new Response(joined.stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer()
+            : await joined.arrayBuffer();
+          return { data, type: spec.type };
+        });
+      }
+      return cache[key];
+    }
+
+    window.fetch = function (input, init) {
+      const url = typeof input === "string" ? input : input.url;
+      const key = url.split("?")[0].split("/").pop();
+      if (!PARTS[key]) return realFetch(input, init);
+      return assemble(key).then(({ data, type }) => new Response(data, {
+        status: 200, headers: { "Content-Type": type, "Content-Length": String(data.byteLength) },
+      }));
+    };
+    // Start both downloads straight away.
+    Object.keys(PARTS).forEach(assemble);
+  })();
+</script>
+<script src="index.js"></script>
+<script>
+  (function () {
+    const GODOT_CONFIG = __GODOT_CONFIG__;
+    const loading = document.getElementById("loading");
+    const status = document.getElementById("status");
+    const engine = new Engine(GODOT_CONFIG);
+    const missing = Engine.getMissingFeatures({ threads: false });
+    function fail(err) {
+      console.error(err);
+      status.classList.add("error");
+      status.textContent = (err && err.message) ? err.message : String(err);
+    }
+    if (missing.length) {
+      fail(new Error("This browser can't run the game: " + missing.join(", ")));
+      return;
+    }
+    engine.startGame({}).then(() => {
+      loading.remove();
+      document.getElementById("canvas").focus();
+    }, fail);
+  })();
+</script>

@@ -168,7 +168,7 @@ func _build() -> void:
 	_start_panel.add_child(go)
 	var hint := _label(20, Color(1, 1, 1, 0.75), 4)
 	hint.text = "Left thumb: steer    Right thumb: brake    The car accelerates by itself"
-	if not OS.has_feature("mobile"):
+	if not (OS.has_feature("mobile") or OS.has_feature("web_android") or OS.has_feature("web_ios")):
 		hint.text += "    (Keyboard: arrows or A/D to steer, S or Space to brake)"
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	hint.name = "Hint"
@@ -330,7 +330,7 @@ func clear_touches() -> void:
 func _draw_controls() -> void:
 	var z := _zones()
 	var pad := 18.0
-	var keys := [["left", steer_axis < 0.0, "◀"], ["right", steer_axis > 0.0, "▶"], ["brake", brake_held, "BRAKE"]]
+	var keys := [["left", steer_axis < 0.0, ""], ["right", steer_axis > 0.0, ""], ["brake", brake_held, "BRAKE"]]
 	for k in keys:
 		var r: Rect2 = z[k[0]]
 		var c := r.intersection(_safe.grow(10)).grow(-pad * 0.5)
@@ -338,11 +338,18 @@ func _draw_controls() -> void:
 		c.size.y *= 0.7
 		var col := Color(1, 1, 1, 0.22 if k[1] else 0.09)
 		_controls.draw_style_box(_rounded(col), c)
-		var font := get_theme_default_font()
-		var fs := 30 if k[0] == "brake" else 40
-		var ts := font.get_string_size(k[2], HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
-		_controls.draw_string(font, c.get_center() + Vector2(-ts.x * 0.5, fs * 0.35), k[2],
-				HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1, 1, 1, 0.75 if k[1] else 0.5))
+		var ink := Color(1, 1, 1, 0.75 if k[1] else 0.5)
+		var m := c.get_center()
+		if k[0] == "brake":
+			var font := get_theme_default_font()
+			var ts := font.get_string_size(k[2], HORIZONTAL_ALIGNMENT_LEFT, -1, 30)
+			_controls.draw_string(font, m + Vector2(-ts.x * 0.5, 30 * 0.35), k[2],
+					HORIZONTAL_ALIGNMENT_LEFT, -1, 30, ink)
+		else:
+			# Arrows are drawn, not typed: the UI font has no arrow glyphs.
+			var d := -1.0 if k[0] == "left" else 1.0
+			_controls.draw_colored_polygon(PackedVector2Array([
+				m + Vector2(d * 16, 0), m + Vector2(-d * 11, -17), m + Vector2(-d * 11, 17)]), ink)
 
 
 func _rounded(c: Color) -> StyleBoxFlat:

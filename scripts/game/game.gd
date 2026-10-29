@@ -419,7 +419,7 @@ func _update_fx(dt: float) -> void:
 
 
 func _vibrate(ms: int) -> void:
-	if OS.has_feature("mobile"):
+	if OS.has_feature("mobile") or OS.has_feature("web_android") or OS.has_feature("web_ios"):
 		Input.vibrate_handheld(ms)
 
 

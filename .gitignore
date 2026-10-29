@@ -2,3 +2,4 @@
 .godot/
 /build/
 /previews/game/
+node_modules/
