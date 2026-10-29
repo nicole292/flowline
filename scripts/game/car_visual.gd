@@ -17,6 +17,8 @@ var _body: Node3D
 var _body_base := Transform3D.IDENTITY
 var _wheels: Array[Dictionary] = []   # {node, base, steer, sign}
 var _paint: StandardMaterial3D
+var _rim: StandardMaterial3D
+var _lights: Array[SpotLight3D] = []
 var _tail_slots: Array = []           # [MeshInstance3D, surface]
 var _blinkers: Array[MeshInstance3D] = []
 var _braking := false
@@ -61,6 +63,15 @@ static func shared_material(key: String) -> Material:
 			m.emission_enabled = true
 			m.emission = Color(1.0, 0.03, 0.02)
 			m.emission_energy_multiplier = 0.25
+		"Gloss":
+			m.albedo_color = Color(0.012, 0.012, 0.014)
+			m.metallic = 0.3
+			m.roughness = 0.08
+			m.clearcoat_enabled = true
+			m.clearcoat = 1.0
+		"Caliper":
+			m.albedo_color = Color(0.75, 0.04, 0.03)
+			m.roughness = 0.3
 		"Plate":
 			m.albedo_color = Color(0.86, 0.86, 0.83)
 			m.roughness = 0.35
@@ -131,6 +142,7 @@ func setup(id: String, paint: Color, with_blinkers := false) -> void:
 	_paint.clearcoat = 1.0
 	_paint.clearcoat_roughness = 0.08
 	set_paint(paint)
+	_rim = (shared_material("Rim") as StandardMaterial3D).duplicate()
 	_apply_materials(_model)
 	_body = _model.find_child("Body", true, false)
 	_body_base = _body.transform
@@ -155,6 +167,40 @@ func set_paint(c: Color) -> void:
 	_paint.albedo_color = c
 
 
+func set_rim(index: int) -> void:
+	var r: Array = CarCatalog.RIMS[clampi(index, 0, CarCatalog.RIMS.size() - 1)]
+	_rim.albedo_color = r[1]
+	_rim.metallic = r[2]
+	_rim.roughness = r[3]
+
+
+## Two real headlight beams for the player's car at night.
+func set_headlights(on: bool) -> void:
+	if on and _lights.is_empty():
+		for side in [-1.0, 1.0]:
+			var l := SpotLight3D.new()
+			l.light_color = Color(1.0, 0.95, 0.85)
+			l.light_energy = 7.0
+			l.spot_range = 70.0
+			l.spot_angle = 24.0
+			l.spot_attenuation = 0.8
+			l.shadow_enabled = false
+			l.position = Vector3(side * width * 0.32, 0.68, -length * 0.5 + 0.1)
+			l.rotation.x = deg_to_rad(-4.0)
+			add_child(l)
+			_lights.append(l)
+	for l in _lights:
+		l.visible = on
+
+
+## Night makes every car's lamps glow brighter (shared materials).
+static func set_night(on: bool) -> void:
+	(shared_material("Headlight") as StandardMaterial3D).emission_energy_multiplier = 5.0 if on else 1.2
+	(shared_material("TailOff") as StandardMaterial3D).emission_energy_multiplier = 3.5 if on else 1.6
+	(shared_material("TailOn") as StandardMaterial3D).emission_energy_multiplier = 9.0 if on else 5.0
+	(shared_material("TailLens") as StandardMaterial3D).emission_energy_multiplier = 0.8 if on else 0.25
+
+
 func _apply_materials(n: Node) -> void:
 	if n is MeshInstance3D:
 		var mi := n as MeshInstance3D
@@ -167,7 +213,9 @@ func _apply_materials(n: Node) -> void:
 				"Taillight":
 					mi.set_surface_override_material(i, shared_material("TailOff"))
 					_tail_slots.append([mi, i])
-				"Glass", "Trim", "Chrome", "Tire", "Rim", "Headlight", "TailLens", "Plate":
+				"Rim":
+					mi.set_surface_override_material(i, _rim)
+				"Glass", "Trim", "Chrome", "Tire", "Headlight", "TailLens", "Plate", "Gloss", "Caliper":
 					mi.set_surface_override_material(i, shared_material(key))
 	for c in n.get_children():
 		_apply_materials(c)

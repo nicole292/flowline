@@ -28,6 +28,22 @@ const SKY_SUN_U := 0.595
 const SKY_SUN_V := 0.232
 const SKY_YAW_DEG := 150.0
 
+## Time-of-day presets. Sun positions come from tools/godot/find_sun.gd.
+const ENVS := {
+	"day": {"name": "Daytime", "sky": "res://assets/env/sky.hdr", "u": 0.595, "v": 0.232, "yaw": 150.0,
+		"sky_energy": 1.0, "sun_energy": 1.7, "sun_color": Color(1.0, 0.96, 0.9),
+		"fog": Color(0.72, 0.78, 0.86), "fog_density": 0.0016, "exposure": 1.0, "ambient": 1.0,
+		"trees": Color(0.82, 0.86, 0.8), "lamps": 0.0, "night": false},
+	"sunset": {"name": "Golden Hour", "sky": "res://assets/env/sky_sunset.hdr", "u": 0.603, "v": 0.408,
+		"yaw": 25.0, "sky_energy": 1.15, "sun_energy": 2.1, "sun_color": Color(1.0, 0.72, 0.42),
+		"fog": Color(0.80, 0.70, 0.62), "fog_density": 0.0022, "exposure": 1.05, "ambient": 0.9,
+		"trees": Color(0.62, 0.58, 0.5), "lamps": 0.0, "night": false},
+	"night": {"name": "Night", "sky": "res://assets/env/sky_night.hdr", "u": 0.599, "v": 0.404,
+		"yaw": 110.0, "sky_energy": 0.09, "sun_energy": 0.22, "sun_color": Color(0.62, 0.72, 1.0),
+		"fog": Color(0.035, 0.045, 0.07), "fog_density": 0.0045, "exposure": 1.35, "ambient": 1.1,
+		"trees": Color(0.07, 0.08, 0.1), "lamps": 1.0, "night": true},
+}
+
 const PLACES := ["Northgate", "Riverside", "Lakeview", "Ashford", "Kingsport", "Stonebridge",
 		"Eastfield", "Harborview", "Millbrook", "Westcliff", "Oakridge", "Fairhaven"]
 
@@ -45,6 +61,14 @@ var _tree_sizes: Array[float] = []
 var _periodic: Array[Dictionary] = []   # {nodes, period, offset, place: Callable}
 var _concrete: StandardMaterial3D
 var _steel: StandardMaterial3D
+var _road_mats: Array[ShaderMaterial] = []
+var _lamp_mat: StandardMaterial3D
+var _refl_mat: StandardMaterial3D
+var _sign_mats: Array[StandardMaterial3D] = []
+var _tree_mats: Array[StandardMaterial3D] = []
+var _sky_mat: PanoramaSkyMaterial
+var env_name := "day"
+var is_night := false
 
 
 func build() -> void:
@@ -67,6 +91,7 @@ func build() -> void:
 	_build_trees()
 	_build_gantries()
 	_build_bridges()
+	apply_env("day")
 
 
 func _tex(name: String) -> Texture2D:
@@ -98,11 +123,10 @@ static func sky_dir(u: float, v: float) -> Vector3:
 
 
 func _build_environment() -> void:
-	var sky_mat := PanoramaSkyMaterial.new()
-	sky_mat.panorama = load("res://assets/env/sky.hdr")
-	sky_mat.energy_multiplier = 1.0
+	_sky_mat = PanoramaSkyMaterial.new()
+	_sky_mat.panorama = load("res://assets/env/sky.hdr")
 	var sky := Sky.new()
-	sky.sky_material = sky_mat
+	sky.sky_material = _sky_mat
 	sky.radiance_size = Sky.RADIANCE_SIZE_256
 	environment = Environment.new()
 	environment.background_mode = Environment.BG_SKY
@@ -130,10 +154,6 @@ func _build_environment() -> void:
 	add_child(we)
 
 	sun = DirectionalLight3D.new()
-	var to_sun := Basis.from_euler(environment.sky_rotation) * sky_dir(SKY_SUN_U, SKY_SUN_V)
-	sun.look_at_from_position(Vector3.ZERO, -to_sun, Vector3.UP if absf(to_sun.y) < 0.99 else Vector3.BACK)
-	sun.light_energy = 1.7
-	sun.light_color = Color(1.0, 0.96, 0.9)
 	sun.shadow_enabled = true
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	sun.directional_shadow_max_distance = 90.0
@@ -164,6 +184,9 @@ func _road_material(center: float) -> ShaderMaterial:
 	m.set_shader_parameter("lane_width", LANE_W)
 	m.set_shader_parameter("lanes", LANES)
 	m.set_shader_parameter("center_x", center)
+	m.set_shader_parameter("lamp_x", -BARRIER_X - 0.1 + 2.75)
+	m.set_shader_parameter("lamp_x2", -BARRIER_X - 0.1 - 2.75)
+	_road_mats.append(m)
 	return m
 
 
@@ -257,6 +280,7 @@ func _build_barriers() -> void:
 	var refl := BoxMesh.new()
 	refl.size = Vector3(0.03, 0.09, 0.07)
 	var refl_mat := StandardMaterial3D.new()
+	_refl_mat = refl_mat
 	refl_mat.albedo_color = Color(1, 1, 1)
 	refl_mat.emission_enabled = true
 	refl_mat.emission = Color(1, 1, 1)
@@ -297,6 +321,10 @@ func _build_poles() -> void:
 	var lamp := StandardMaterial3D.new()
 	lamp.albedo_color = Color(0.85, 0.85, 0.8)
 	lamp.roughness = 0.3
+	lamp.emission_enabled = true
+	lamp.emission = Color(1.0, 0.8, 0.5)
+	lamp.emission_energy_multiplier = 0.0
+	_lamp_mat = lamp
 	var st := SurfaceTool.new()
 	var pole := CylinderMesh.new()
 	pole.top_radius = 0.08
@@ -358,6 +386,7 @@ func _make_tree_meshes() -> void:
 			mat.billboard_keep_scale = true
 			mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 			mat.albedo_color = Color(0.82, 0.86, 0.8)
+			_tree_mats.append(mat)
 			mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 			mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 			var q := QuadMesh.new()
@@ -448,6 +477,10 @@ func _make_gantry() -> Node3D:
 	var green := StandardMaterial3D.new()
 	green.albedo_color = Color(0.0, 0.32, 0.17)
 	green.roughness = 0.45
+	green.emission_enabled = true
+	green.emission = Color(0.0, 0.32, 0.17)
+	green.emission_energy_multiplier = 0.0
+	_sign_mats.append(green)
 	var white := StandardMaterial3D.new()
 	white.albedo_color = Color(0.92, 0.92, 0.9)
 	var x0 := -BARRIER_X - 0.1
@@ -539,6 +572,48 @@ func _update_periodic(player_z: float) -> void:
 					place.call(n, k)
 		for i in range(used, nodes.size()):
 			(nodes[i] as Node3D).visible = false
+
+
+## Switches time of day: sky, sun, fog, exposure, lamps and tree shading.
+func apply_env(name: String) -> void:
+	if not ENVS.has(name):
+		name = "day"
+	env_name = name
+	var e: Dictionary = ENVS[name]
+	is_night = e["night"]
+	_sky_mat.panorama = load(e["sky"])
+	_sky_mat.energy_multiplier = e["sky_energy"]
+	environment.sky_rotation = Vector3(0, deg_to_rad(e["yaw"]), 0)
+	environment.fog_light_color = e["fog"]
+	environment.fog_density = e["fog_density"]
+	environment.tonemap_exposure = e["exposure"]
+	environment.ambient_light_energy = e["ambient"]
+	environment.glow_hdr_threshold = 0.9 if is_night else 1.4
+	environment.glow_intensity = 0.8 if is_night else 0.45
+	var to_sun := Basis.from_euler(environment.sky_rotation) * sky_dir(e["u"], e["v"])
+	sun.look_at_from_position(Vector3.ZERO, -to_sun, Vector3.UP if absf(to_sun.y) < 0.99 else Vector3.BACK)
+	sun.light_energy = e["sun_energy"]
+	sun.light_color = e["sun_color"]
+	for m in _road_mats:
+		m.set_shader_parameter("lamps", e["lamps"])
+	_lamp_mat.emission_energy_multiplier = 6.0 if is_night else 0.0
+	_refl_mat.emission_energy_multiplier = 3.0 if is_night else 0.4
+	for m in _sign_mats:
+		m.emission_energy_multiplier = 0.6 if is_night else 0.0
+	for m in _tree_mats:
+		m.albedo_color = e["trees"]
+
+
+func set_two_way(on: bool) -> void:
+	_road_mats[0].set_shader_parameter("two_way", on)
+
+
+## Low quality: no sun shadows and a thinner forest, for older phones.
+func set_quality(high: bool) -> void:
+	sun.shadow_enabled = high
+	for c in _chunks:
+		for mmi in c["mms"]:
+			(mmi as MultiMeshInstance3D).multimesh.visible_instance_count = -1 if high else 12
 
 
 func update(player_z: float) -> void:

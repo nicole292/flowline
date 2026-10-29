@@ -15,6 +15,11 @@ uniform float dash_period = 12.0;
 uniform float dash_length = 3.0;
 uniform float darkness = 0.36;
 uniform float wetness = 0.0;
+uniform bool two_way = false;        // solid double centre line between lanes 2 and 3
+uniform float lamps = 0.0;           // night: warm light pools under the median lamps
+uniform float lamp_x = -6.25;
+uniform float lamp_x2 = -11.75;
+uniform float lamp_period = 60.0;
 
 varying vec3 wpos;
 
@@ -59,7 +64,12 @@ void fragment() {
 	float dash = smoothstep(0.0, fwz, zz) * (1.0 - smoothstep(dash_length - fwz, dash_length + fwz, zz));
 	for (int k = 1; k < lanes; k++) {
 		float x0 = -half_road + float(k) * lane_width;
-		paint = max(paint, line_mask(lx_road - x0, 0.075) * dash);
+		if (two_way && k == lanes / 2) {
+			paint = max(paint, line_mask(lx_road - x0 - 0.17, 0.065));
+			paint = max(paint, line_mask(lx_road - x0 + 0.17, 0.065));
+		} else {
+			paint = max(paint, line_mask(lx_road - x0, 0.075) * dash);
+		}
 	}
 	// Worn paint: aggregate shows through.
 	paint *= smoothstep(0.15, 0.55, a1.r * 0.8 + mid * 0.5);
@@ -68,6 +78,12 @@ void fragment() {
 	float shoulder = smoothstep(half_road - 0.1, half_road + 0.05, abs(lx_road));
 	col *= mix(1.0, 1.08, shoulder);
 	ALBEDO = col;
+	if (lamps > 0.0) {
+		float dz = mod(p.y + lamp_period * 0.5, lamp_period) - lamp_period * 0.5;
+		float pool = exp(-pow((p.x - lamp_x) / 4.2, 2.0) - pow(dz / 11.0, 2.0));
+		pool += exp(-pow((p.x - lamp_x2) / 4.2, 2.0) - pow(dz / 11.0, 2.0));
+		EMISSION = col * pool * lamps * vec3(1.0, 0.72, 0.42) * 4.5;
+	}
 	NORMAL_MAP = texture(normal_tex, uv).rgb;
 	NORMAL_MAP_DEPTH = mix(1.0, 0.3, paint);
 	ROUGHNESS = mix(mix(rough, 0.55, paint), 0.1, wetness);

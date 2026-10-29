@@ -1,10 +1,10 @@
 class_name Hud
 extends Control
-## In-game HUD, touch controls and the start / pause / results overlays.
+## In-game HUD, touch controls and the pause / results overlays.
 ## Touch layout: left thumb steers (two zones), right thumb brakes.
 ## The car accelerates on its own.
 
-signal start_pressed
+signal menu_pressed
 signal pause_pressed
 signal resume_pressed
 signal restart_pressed
@@ -17,10 +17,13 @@ const MEDIUM := preload("res://assets/fonts/BarlowSemiCondensed-Medium.ttf")
 
 var steer_axis := 0.0
 var brake_held := false
+var mph := false
+var show_steer_buttons := true
 
 var _score: Label
 var _score_cap: Label
-var _best: Label
+var _timer: Label
+var _bonus: Label
 var _mult: Label
 var _dist: Label
 var _speed: Label
@@ -31,7 +34,6 @@ var _flow_active := false
 var _popup_root: Control
 var _controls: Control
 var _touches := {}  # index -> position
-var _start_panel: Control
 var _pause_panel: Control
 var _results_panel: Control
 var _results_body: VBoxContainer
@@ -46,7 +48,7 @@ func _ready() -> void:
 	_build()
 	get_viewport().size_changed.connect(_layout)
 	_layout()
-	show_start()
+	_set_gameplay_visible(false)
 
 
 # ---------------------------------------------------------------- building
@@ -126,65 +128,27 @@ func _build() -> void:
 	_pause_btn.custom_minimum_size = Vector2(64, 64)
 	_pause_btn.pressed.connect(func(): pause_pressed.emit())
 	_pause_btn.focus_mode = Control.FOCUS_NONE
-	for n in [_controls, _score_cap, _score, _mult, _dist, _speed, _speed_unit, _flow_bar, _popup_root, _pause_btn]:
+	_timer = _label(40)
+	_timer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_bonus = _label(24, ACCENT)
+	_bonus.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	for n in [_controls, _score_cap, _score, _mult, _dist, _speed, _speed_unit, _flow_bar, _popup_root,
+			_pause_btn, _timer, _bonus]:
 		add_child(n)
 		_gameplay_nodes.append(n)
-
-	# Start overlay
-	_start_panel = Control.new()
-	_start_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
-	var side := TextureRect.new()
-	var grad := Gradient.new()
-	grad.set_color(0, Color(0.02, 0.025, 0.03, 0.82))
-	grad.set_color(1, Color(0.02, 0.025, 0.03, 0.0))
-	var gt := GradientTexture2D.new()
-	gt.gradient = grad
-	gt.fill_from = Vector2(0.35, 0)
-	gt.fill_to = Vector2(1, 0)
-	side.texture = gt
-	side.stretch_mode = TextureRect.STRETCH_SCALE
-	side.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	side.name = "Side"
-	_start_panel.add_child(side)
-	var title := _label(118, Color.WHITE, 0)
-	title.text = "FLOWLINE"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	title.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	title.name = "Title"
-	_start_panel.add_child(title)
-	var tag := _label(26, Color(1, 1, 1, 0.85), 0, false)
-	tag.text = "Pass close to traffic to build Flow. Fill it for double points."
-	tag.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_best = _label(22, ACCENT, 0)
-	_best.name = "Best"
-	_start_panel.add_child(_best)
-	tag.name = "Tag"
-	_start_panel.add_child(tag)
-	var go := _button("DRIVE", true)
-	go.name = "Go"
-	go.custom_minimum_size = Vector2(320, 84)
-	go.pressed.connect(func(): start_pressed.emit())
-	_start_panel.add_child(go)
-	var hint := _label(20, Color(1, 1, 1, 0.75), 4)
-	hint.text = "Left thumb: steer    Right thumb: brake    The car accelerates by itself"
-	if not (OS.has_feature("mobile") or OS.has_feature("web_android") or OS.has_feature("web_ios")):
-		hint.text += "    (Keyboard: arrows or A/D to steer, S or Space to brake)"
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	hint.name = "Hint"
-	_start_panel.add_child(hint)
-	add_child(_start_panel)
 
 	# Pause overlay
 	_pause_panel = _make_center_panel("PAUSED", [
 		["RESUME", true, func(): resume_pressed.emit()],
-		["RESTART", false, func(): restart_pressed.emit()]])
+		["RESTART", false, func(): restart_pressed.emit()],
+		["MENU", false, func(): menu_pressed.emit()]])
 	# Results overlay
-	_results_panel = _make_center_panel("", [["DRIVE AGAIN", true, func(): restart_pressed.emit()]])
+	_results_panel = _make_center_panel("", [["DRIVE AGAIN", true, func(): restart_pressed.emit()],
+		["MENU", false, func(): menu_pressed.emit()]], true)
 	_results_body = _results_panel.find_child("Body", true, false)
 
 
-func _make_center_panel(title: String, buttons: Array) -> Control:
+func _make_center_panel(title: String, buttons: Array, side_by_side := false) -> Control:
 	var root := CenterContainer.new()
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	var shade := ColorRect.new()
@@ -207,10 +171,17 @@ func _make_center_panel(title: String, buttons: Array) -> Control:
 	body.name = "Body"
 	body.add_theme_constant_override("separation", 6)
 	box.add_child(body)
+	var holder_row: BoxContainer = HBoxContainer.new() if side_by_side else box
+	if side_by_side:
+		holder_row.add_theme_constant_override("separation", 14)
+		holder_row.alignment = BoxContainer.ALIGNMENT_CENTER
+		box.add_child(holder_row)
 	for spec in buttons:
 		var b := _button(spec[0], spec[1])
+		if side_by_side:
+			b.custom_minimum_size = Vector2(230, 66)
 		b.pressed.connect(spec[2])
-		box.add_child(b)
+		holder_row.add_child(b)
 	p.add_child(box)
 	root.add_child(p)
 	holder.visible = false
@@ -231,7 +202,7 @@ func _layout() -> void:
 	var m := 28.0
 	_safe = safe.grow(-m)
 	# Sized explicitly (anchors are reset to top-left so Godot doesn't fight us).
-	for n in [self, _start_panel, _pause_panel, _results_panel]:
+	for n in [self, _pause_panel, _results_panel]:
 		n.set_anchors_preset(Control.PRESET_TOP_LEFT)
 		n.position = Vector2.ZERO
 		n.size = vp
@@ -256,23 +227,10 @@ func _layout() -> void:
 	_popup_root.size = vp
 	_controls.size = vp
 	_controls.queue_redraw()
-	var title: Label = _start_panel.get_node("Title")
-	var side: TextureRect = _start_panel.get_node("Side")
-	side.position = Vector2.ZERO
-	side.size = Vector2(vp.x * 0.62, vp.y)
-	var lx := s.position.x + 24
-	title.size = Vector2(vp.x * 0.6, 130)
-	title.position = Vector2(lx - 6, vp.y * 0.16)
-	var tag: Label = _start_panel.get_node("Tag")
-	tag.size = Vector2(minf(vp.x * 0.42, 520.0), 70)
-	tag.position = Vector2(lx, vp.y * 0.16 + 132)
-	_best.size = Vector2(vp.x * 0.5, 30)
-	_best.position = Vector2(lx, vp.y * 0.16 + 220)
-	var go: Button = _start_panel.get_node("Go")
-	go.position = Vector2(lx, vp.y * 0.66)
-	var hint: Label = _start_panel.get_node("Hint")
-	hint.size = Vector2(vp.x * 0.7, 30)
-	hint.position = Vector2(lx, s.end.y - 24)
+	_timer.size = Vector2(300, 50)
+	_timer.position = Vector2(vp.x * 0.5 - 150, s.position.y + 50)
+	_bonus.size = Vector2(400, 30)
+	_bonus.position = Vector2(vp.x * 0.5 - 200, s.position.y + 98)
 
 
 # ---------------------------------------------------------------- touch
@@ -291,6 +249,17 @@ func _zones() -> Dictionary:
 
 func _input(event: InputEvent) -> void:
 	if not _controls.visible:
+		return
+	if not show_steer_buttons:
+		# Tilt steering: the whole right half brakes.
+		if event is InputEventScreenTouch:
+			var t := event as InputEventScreenTouch
+			if t.pressed and t.position.x > get_viewport_rect().size.x * 0.5:
+				_touches[t.index] = t.position
+			else:
+				_touches.erase(t.index)
+			brake_held = not _touches.is_empty()
+			_controls.queue_redraw()
 		return
 	if event is InputEventScreenTouch:
 		var e := event as InputEventScreenTouch
@@ -331,6 +300,8 @@ func _draw_controls() -> void:
 	var z := _zones()
 	var pad := 18.0
 	var keys := [["left", steer_axis < 0.0, ""], ["right", steer_axis > 0.0, ""], ["brake", brake_held, "BRAKE"]]
+	if not show_steer_buttons:
+		keys = [["brake", brake_held, "BRAKE"]]
 	for k in keys:
 		var r: Rect2 = z[k[0]]
 		var c := r.intersection(_safe.grow(10)).grow(-pad * 0.5)
@@ -367,7 +338,8 @@ func set_values(score: float, distance_m: float, speed_ms: float, flow: float,
 		flow_active: bool, streak: int) -> void:
 	_score.text = _fmt(int(score))
 	_dist.text = "%.2f km" % (distance_m / 1000.0)
-	_speed.text = str(int(round(speed_ms * 3.6)))
+	_speed.text = str(int(round(speed_ms * (2.237 if mph else 3.6))))
+	_speed_unit.text = "MPH" if mph else "KM/H"
 	if flow_active:
 		_mult.text = "FLOW DRIVE  x2"
 	elif streak > 1:
@@ -446,20 +418,26 @@ func _set_gameplay_visible(v: bool) -> void:
 		n.visible = v
 
 
-func set_best(score: int) -> void:
-	_best.text = "BEST  %s" % _fmt(score) if score > 0 else ""
+## Time Trial clock; pass seconds < 0 to hide it.
+func set_timer(seconds: float, next_km: float) -> void:
+	_timer.visible = seconds >= 0.0
+	if seconds >= 0.0:
+		_timer.text = "%d:%04.1f   ·   CHECKPOINT %.1f KM" % [int(seconds) / 60, fmod(seconds, 60.0), next_km]
+		_timer.add_theme_color_override("font_color", Color(1, 0.4, 0.3) if seconds < 10.0 else Color.WHITE)
 
 
-func show_start() -> void:
+func set_bonus(text: String) -> void:
+	_bonus.text = text
+
+
+func hide_all() -> void:
 	_set_gameplay_visible(false)
-	_start_panel.visible = true
 	_pause_panel.visible = false
 	_results_panel.visible = false
 
 
 func show_playing() -> void:
 	_set_gameplay_visible(true)
-	_start_panel.visible = false
 	_pause_panel.visible = false
 	_results_panel.visible = false
 	clear_touches()
@@ -471,23 +449,28 @@ func show_pause(on: bool) -> void:
 	clear_touches()
 
 
-func show_results(stats: Array, headline: String) -> void:
+func show_results(stats: Array, headline: String, extras: Array = []) -> void:
 	_set_gameplay_visible(false)
 	for c in _results_body.get_children():
 		c.queue_free()
-	var h := _label(50, ACCENT)
+	var h := _label(46, ACCENT)
 	h.text = headline
 	h.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_results_body.add_child(h)
 	for row in stats:
 		var line := HBoxContainer.new()
 		line.custom_minimum_size = Vector2(440, 0)
-		var k := _label(26, Color(1, 1, 1, 0.7), 0)
+		var k := _label(23, Color(1, 1, 1, 0.7), 0, false)
 		k.text = row[0]
 		k.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var v := _label(26, Color.WHITE, 0)
+		var v := _label(23, Color.WHITE, 0)
 		v.text = row[1]
 		line.add_child(k)
 		line.add_child(v)
 		_results_body.add_child(line)
+	for e in extras:
+		var x := _label(22, e[1], 0)
+		x.text = e[0]
+		x.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_results_body.add_child(x)
 	_results_panel.visible = true

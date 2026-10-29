@@ -29,10 +29,13 @@ var flow_activations := 0
 var streak := 0
 var streak_timer := 0.0
 var _grace := 0.0
+## Extra multiplier from where you drive (x2 in the oncoming lanes in Two-Way).
+var lane_bonus := 1.0
+var oncoming_distance := 0.0
 
 
 func multiplier() -> float:
-	return 2.0 if flow_active else 1.0
+	return (2.0 if flow_active else 1.0) * lane_bonus
 
 
 ## Speed bonus for distance points: 1x at 80 km/h, 2x at 160 km/h, 3x at 240.
@@ -46,6 +49,8 @@ func tick(dt: float, speed_ms: float) -> void:
 	distance += d
 	top_speed = maxf(top_speed, speed_ms)
 	score += d * speed_factor(speed_ms) * multiplier()
+	if lane_bonus > 1.0:
+		oncoming_distance += d
 	streak_timer = maxf(0.0, streak_timer - dt)
 	if streak_timer <= 0.0:
 		streak = 0

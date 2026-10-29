@@ -42,6 +42,8 @@ def spec(**kw):
         tail="bar", head="slim", exhaust=2, spokes=5, paint=(0.6, 0.6, 0.6),
         bed=False, box=None, mirrors=True, stations=56, doors=4, trunk=False,
         chrome_belt=False, plate=True,
+        flare=0.028, spoiler=None, splitter=False, fins=False, vents=False,
+        side_intake=False, two_tone=False, kit=False, twin_spokes=False,
     )
     base.update(kw)
     clr = base["clr"]
@@ -58,34 +60,55 @@ def spec(**kw):
 
 CARS = {
     # ---- player cars ------------------------------------------------------
-    "kestrel": spec(doors=2,   # compact hot hatch, starter car
-        L=4.06, W=1.80, wb=2.58, wr=0.33, roof=1.43, clr=0.15,
+    "kestrel": spec(doors=2, kit=True,   # hot hatch
+        L=4.06, W=1.82, wb=2.58, wr=0.34, tw=0.26, rim=0.72, roof=1.40, clr=0.13,
         cab_rear=0.05, rw_top=0.16, ws_top=0.56, cab_front=0.71,
         belt=[(0, .86), (.05, .93), (.3, .92), (.7, .86), (.9, .80), (1, .66)],
-        tail="pair", paint=(0.85, 0.12, 0.08), spokes=6, roof_w=0.72),
-    "vanta": spec(doors=2, trunk=True,   # sport coupe
-        L=4.48, W=1.90, wb=2.66, wr=0.345, roof=1.27, clr=0.13,
+        tail="pair", paint=(0.85, 0.12, 0.08), spokes=6, roof_w=0.72,
+        flare=0.05, spoiler="lip", splitter=True, exhaust=-2, two_tone=True),
+    "vanta": spec(doors=2, trunk=True, kit=True,   # sport coupe (starter)
+        L=4.48, W=1.92, wb=2.66, wr=0.35, tw=0.27, rim=0.74, roof=1.25, clr=0.12,
         cab_rear=0.17, rw_top=0.37, ws_top=0.555, cab_front=0.665,
         belt=[(0, .83), (.08, .90), (.35, .86), (.66, .79), (.9, .70), (1, .58)],
-        paint=(0.06, 0.20, 0.55), spokes=5),
-    "meridian": spec(doors=4, trunk=True, chrome_belt=True,   # executive sedan
-        L=4.86, W=1.87, wb=2.92, wr=0.35, roof=1.44, clr=0.15,
+        paint=(0.06, 0.20, 0.55), spokes=5, twin_spokes=True,
+        flare=0.05, spoiler="duck", splitter=True, fins=True, two_tone=True),
+    "meridian": spec(doors=4, trunk=True, chrome_belt=True, kit=True,   # super-saloon
+        L=4.86, W=1.89, wb=2.92, wr=0.355, tw=0.27, rim=0.74, roof=1.42, clr=0.13,
         cab_rear=0.19, rw_top=0.31, ws_top=0.585, cab_front=0.70,
         belt=[(0, .90), (.08, .96), (.3, .95), (.7, .88), (.9, .81), (1, .68)],
-        paint=(0.12, 0.12, 0.13), spokes=10, tail="bar"),
-    "brute": spec(doors=2, trunk=True,   # muscle car, long hood
-        L=4.78, W=1.94, wb=2.80, wr=0.36, tw=0.27, roof=1.33, clr=0.14,
+        paint=(0.12, 0.12, 0.13), spokes=10, tail="bar", exhaust=4,
+        flare=0.04, spoiler="duck", splitter=True, fins=True),
+    "brute": spec(doors=2, trunk=True, kit=True,   # muscle car, long hood
+        L=4.78, W=1.96, wb=2.80, wr=0.365, tw=0.30, rim=0.72, roof=1.30, clr=0.13,
         cab_rear=0.20, rw_top=0.35, ws_top=0.52, cab_front=0.615,
         belt=[(0, .88), (.06, .94), (.4, .90), (.62, .86), (.92, .82), (1, .72)],
-        tail="pair", paint=(0.90, 0.55, 0.05), spokes=5, exhaust=2),
-    "solstice": spec(doors=2,   # mid-engine supercar
-        L=4.56, W=2.00, wb=2.70, wb_shift=-0.05, wr=0.35, tw=0.29, roof=1.14,
-        clr=0.11, crown=0.03,
+        tail="pair", paint=(0.90, 0.55, 0.05), spokes=5, exhaust=4,
+        flare=0.055, spoiler="duck", vents=True, splitter=True, two_tone=True),
+    "halcyon": spec(doors=2, trunk=False, kit=True,   # fastback grand tourer
+        L=4.76, W=1.97, wb=2.84, wr=0.36, tw=0.29, rim=0.74, roof=1.23, clr=0.12,
+        cab_rear=0.12, rw_top=0.40, ws_top=0.53, cab_front=0.615,
+        belt=[(0, .82), (.06, .88), (.35, .84), (.62, .80), (.9, .72), (1, .60)],
+        tail="bar", paint=(0.05, 0.22, 0.17), spokes=10, twin_spokes=True, exhaust=4,
+        flare=0.05, spoiler="duck", splitter=True, fins=True, vents=True),
+    "solstice": spec(doors=2, kit=True,   # mid-engine supercar
+        L=4.56, W=2.02, wb=2.70, wb_shift=-0.05, wr=0.355, tw=0.30, rim=0.76, roof=1.13,
+        clr=0.10, crown=0.03,
         cab_rear=0.30, rw_top=0.43, ws_top=0.53, cab_front=0.67,
         halfw=[(0, .90), (.05, .98), (.2, 1.0), (.5, .965), (.7, 1.0), (.86, .99), (.95, .92), (1, .74)],
         belt=[(0, .82), (.06, .86), (.3, .80), (.6, .74), (.79, .80), (.92, .66), (1, .50)],
         zb=[(0, .36), (.04, .19), (.12, .11), (.9, .11), (.97, .14), (1, .24)],
-        paint=(0.80, 0.80, 0.82), spokes=10, roof_w=0.66, tail="bar"),
+        paint=(0.80, 0.80, 0.82), spokes=10, roof_w=0.66, tail="bar",
+        flare=0.06, spoiler="duck", side_intake=True, splitter=True, fins=True, two_tone=True),
+    "vortex": spec(doors=2, kit=True,   # winged hypercar
+        L=4.72, W=2.08, wb=2.76, wb_shift=-0.06, wr=0.36, tw=0.32, rim=0.77, roof=1.09,
+        clr=0.09, crown=0.03,
+        cab_rear=0.34, rw_top=0.45, ws_top=0.545, cab_front=0.68,
+        halfw=[(0, .92), (.05, .99), (.2, 1.0), (.5, .955), (.7, 1.0), (.86, .99), (.95, .91), (1, .72)],
+        belt=[(0, .80), (.06, .84), (.3, .80), (.6, .72), (.79, .79), (.92, .63), (1, .47)],
+        zb=[(0, .33), (.04, .17), (.12, .10), (.9, .10), (.97, .13), (1, .22)],
+        paint=(0.95, 0.38, 0.05), spokes=6, twin_spokes=True, roof_w=0.62, tail="bar",
+        exhaust=-2, flare=0.07, spoiler="wing", side_intake=True, splitter=True, fins=True,
+        two_tone=True),
     # ---- traffic ----------------------------------------------------------
     "t_sedan": spec(doors=4, trunk=True, 
         L=4.65, W=1.80, wb=2.75, wr=0.33, roof=1.47, clr=0.16,
@@ -200,11 +223,13 @@ def materials_for(paint):
         "TailLens": make_material("TailLens", (0.22, 0.012, 0.012), 0.0, 0.06,
                                   emit=(0.6, 0.02, 0.01), emit_str=0.25),
         "Plate": make_material("Plate", (0.85, 0.85, 0.82), 0.0, 0.35),
+        "Gloss": make_material("Gloss", (0.012, 0.012, 0.014), 0.2, 0.08, coat=1.0),
+        "Caliper": make_material("Caliper", (0.75, 0.04, 0.03), 0.0, 0.3, coat=0.6),
     }
 
 
 MAT_ORDER = ["Paint", "Glass", "Trim", "Chrome", "Tire", "Rim", "Headlight", "Taillight",
-             "TailLens", "Plate"]
+             "TailLens", "Plate", "Gloss", "Caliper"]
 
 
 class MeshBuilder:
@@ -310,7 +335,7 @@ def section(sp, t):
     h = pchip(sp["halfw"], t) * W / 2
     for wy in (sp["wb"] / 2 + sp["wb_shift"], -sp["wb"] / 2 + sp["wb_shift"]):
         wt = 0.5 + wy / L
-        h *= 1.0 + 0.028 * math.exp(-((t - wt) / 0.075) ** 2)
+        h *= 1.0 + sp["flare"] * math.exp(-((t - wt) / 0.075) ** 2)
     b = pchip(sp["zb"], t)
     e = pchip(sp["belt"], t)
     r = roof_z(sp, t)
@@ -379,6 +404,8 @@ def face_material(sp, t0, t1, k):
             return "Glass"
     if k == 8 and (ws <= tm <= cf or cr <= tm <= rw):  # blacked-out pillars
         return "Trim"
+    if sp["two_tone"] and k in (8, 9) and rw < tm < ws:  # gloss black roof
+        return "Gloss"
     return "Paint"
 
 
@@ -414,7 +441,7 @@ def build_body(sp, mats):
     for ring, sign in ((rings[0], -1), (rings[-1], 1)):
         cen = sum((mb.verts[v] for v in ring), Vector()) / len(ring)
         prev = ring
-        for scale, push in ((0.985, 0.007), (0.84, 0.022), (0.55, 0.03)):
+        for scale, push in ((0.985, 0.007), (0.84, 0.020), (0.50, 0.021)):
             inner = []
             for v in ring:
                 p = mb.verts[v]
@@ -587,6 +614,62 @@ def ribbon(mb, surf, xs, z, height, front, mat, out=0.018, inset=0.05, curve=Non
     mb.f(list(reversed(cols[-1])) if front else cols[-1], mat)
 
 
+def build_kit(sp, surf, mb, hr, hf, zb_r, zb_f):
+    """Aero and styling parts: splitter, diffuser fins, spoilers, vents, intakes."""
+    L, W = sp["L"], sp["W"]
+
+    def y_of(t):
+        return -L / 2 + t * L
+
+    if sp["splitter"]:
+        y = surf.y_extent(0.0, zb_f + 0.05, True)
+        if y is not None:
+            mb.box((0, y - 0.02, zb_f + 0.012), (2 * 0.84 * hf, 0.16, 0.022), "Gloss")
+    if sp["fins"]:
+        for i in range(7):
+            x = lerp(-0.5, 0.5, i / 6) * hr
+            y = surf.y_extent(x, zb_r + 0.06, False)
+            if y is not None:
+                mb.box((x, y - 0.012, zb_r + 0.075), (0.012, 0.09, 0.085), "Gloss")
+    sp_type = sp["spoiler"]
+    if sp_type == "lip":  # roof spoiler over the hatch glass
+        t = sp["rw_top"] - 0.005
+        z = roof_z(sp, t) + 0.015
+        w = pchip(sp["halfw"], t) * W * sp["roof_w"] * 1.05
+        mb.box((0, y_of(t) - 0.12, z), (w, 0.30, 0.035), "Paint",
+               rot=Matrix.Rotation(math.radians(-6), 3, "X"))
+    elif sp_type == "duck":  # ducktail lip on the boot edge
+        t = 0.035
+        z = roof_z(sp, t) + 0.02
+        w = pchip(sp["halfw"], t) * W * 0.86
+        mb.box((0, y_of(t), z), (w, 0.20, 0.045), "Paint",
+               rot=Matrix.Rotation(math.radians(-10), 3, "X"))
+    elif sp_type == "wing":  # carbon rear wing on swan-neck uprights
+        t = 0.08
+        deck = roof_z(sp, t)
+        y = y_of(t)
+        span = pchip(sp["halfw"], t) * W * 0.96
+        for sx in (-0.30, 0.30):
+            mb.box((sx * span, y + 0.02, deck + 0.13), (0.035, 0.12, 0.26), "Gloss")
+        mb.box((0, y, deck + 0.25), (span, 0.36, 0.04), "Gloss",
+               rot=Matrix.Rotation(math.radians(-9), 3, "X"))
+        for sx in (-0.5, 0.5):
+            mb.box((sx * span, y, deck + 0.26), (0.02, 0.40, 0.14), "Gloss")
+    if sp["vents"]:  # twin bonnet vents
+        for sx in (-1, 1):
+            t = 0.80
+            z = roof_z(sp, t)
+            mb.box((sx * 0.30 * hf, y_of(t), z + 0.004), (0.20, 0.36, 0.022), "Gloss")
+    if sp["side_intake"]:  # dark intakes ahead of the rear wheels
+        t = sp["cab_rear"] - 0.03
+        zm = (pchip(sp["zb"], t) + pchip(sp["belt"], t)) / 2 + 0.03
+        for sx in (-1, 1):
+            x = surf.x_extent(y_of(t), zm, sx)
+            if x is not None:
+                mb.box((x - sx * 0.01, y_of(t), zm), (0.035, 0.46, 0.17), "Gloss",
+                       rot=Matrix.Rotation(math.radians(-12 * sx), 3, "Z"))
+
+
 def build_details(sp, body, mats):
     surf = Surface(body)
     W, L = sp["W"], sp["L"]
@@ -626,14 +709,15 @@ def build_details(sp, body, mats):
     xs = [lerp(-0.74 * hr, 0.74 * hr, i / (n * 2)) for i in range(n * 2 + 1)]
     ribbon(mb, surf, xs, zb_r + 0.06, 0.10, False, "Trim", out=0.01)
     # exhausts
-    for e in range(sp["exhaust"]):
-        x = (0.45 if sp["exhaust"] == 1 else (-0.5 + e)) * hr
-        if sp["exhaust"] == 2:
-            x = (-0.55 if e == 0 else 0.55) * hr
+    pipes = {0: [], 1: [0.45], 2: [-0.55, 0.55], 4: [-0.66, -0.50, 0.50, 0.66],
+             -2: [-0.07, 0.07]}[sp["exhaust"]]
+    rad = 0.052 if sp["kit"] else 0.046
+    for e, fx in enumerate(pipes):
+        x = fx * hr
         y = surf.y_extent(x, zb_r + 0.07, False)
         if y is None:
             continue
-        prof = [(0.040, 0.0), (0.046, 0.0), (0.046, -0.09), (0.040, -0.09)]
+        prof = [(rad - 0.007, 0.0), (rad, 0.0), (rad, -0.09), (rad - 0.007, -0.09)]
         sub = MeshBuilder()
         sub.revolve(prof, 16, "Chrome")
         pipe = sub.build("Exhaust%d" % e, mats)
@@ -647,17 +731,25 @@ def build_details(sp, body, mats):
         xs = sorted(s * lerp(0.42 * hf, 0.90 * hf, i / 10) for i in range(11))
         lift = (lambda x, s=s: 0.03 * ((abs(x) / hf - 0.42) / 0.48))
         tall = 0.075 if sp["head"] == "slim" else 0.12
-        ribbon(mb, surf, xs, hz, tall, True, "Chrome", out=0.008, curve=lift)
+        housing = "Gloss" if sp["kit"] else "Chrome"
+        ribbon(mb, surf, xs, hz, tall, True, housing, out=0.008, curve=lift)
         ribbon(mb, surf, xs, hz + tall * 0.5 - 0.012, 0.014, True, "Headlight", out=0.013, curve=lift)
-        px = s * 0.62 * hf
-        py = surf.y_extent(px, hz, True)
-        if py is not None:
-            mb.box((px, py + 0.006, hz - 0.008), (0.07, 0.02, 0.045), "Headlight")
+        if sp["kit"]:  # second LED line on the outer half: a two-stripe signature
+            xs2 = sorted(s * lerp(0.66 * hf, 0.90 * hf, i / 6) for i in range(7))
+            ribbon(mb, surf, xs2, hz - tall * 0.5 + 0.014, 0.012, True, "Headlight", out=0.013, curve=lift)
+        for fx in ((0.55, 0.70) if sp["kit"] else (0.62,)):
+            px = s * fx * hf
+            py = surf.y_extent(px, hz, True)
+            if py is not None:
+                mb.box((px, py + 0.006, hz - 0.008), (0.055, 0.02, 0.04), "Headlight")
     # grille + lower intake
     xs = [lerp(-0.48 * hf, 0.48 * hf, i / 16) for i in range(17)]
     ribbon(mb, surf, xs, (zb_f + belt_f) / 2 - 0.01, 0.17, True, "Trim", out=0.006)
     xs = [lerp(-0.76 * hf, 0.76 * hf, i / 22) for i in range(23)]
     ribbon(mb, surf, xs, zb_f + 0.08, 0.09, True, "Trim", out=0.006)
+
+    # --- body kit ---
+    build_kit(sp, surf, mb, hr, hf, zb_r, zb_f)
 
     # --- number plates: white plate, dark frame and characters ---
     if sp["plate"]:
@@ -753,7 +845,13 @@ def build_wheel(sp, name, pos, mats):
             mid = (rr * 0.92 + 0.07) / 2
             c = rot @ Vector((0, mid, 0))
             width = 0.075 if sp["spokes"] <= 6 else 0.04
-            mb.box((face_x, c.y, c.z), (0.03, rr * 0.92 - 0.06, width), "Rim", rot=rot)
+            if sp["twin_spokes"]:
+                for off in (-0.13, 0.13):
+                    r2 = Matrix.Rotation(a + off * 6 / max(sp["spokes"], 1), 3, "X")
+                    c2 = r2 @ Vector((0, mid, 0))
+                    mb.box((face_x, c2.y, c2.z), (0.03, rr * 0.92 - 0.06, width * 0.45), "Rim", rot=r2)
+            else:
+                mb.box((face_x, c.y, c.z), (0.03, rr * 0.92 - 0.06, width), "Rim", rot=rot)
     else:  # plain steel wheel with hubcap
         cap = [(rr * 0.88, w2 - 0.05), (rr * 0.8, w2 - 0.03), (rr * 0.3, w2 - 0.018), (0.001, w2 - 0.016)]
         mb.revolve(cap, seg, "Rim")
@@ -762,7 +860,7 @@ def build_wheel(sp, name, pos, mats):
     # brake disc + caliper (visible through spokes)
     disc = [(rr * 0.78, -0.01), (rr * 0.78, 0.01)]
     mb.revolve(disc, seg, "Chrome", cap_end=True)
-    mb.box((0.0, 0.0, rr * 0.62), (0.07, 0.16, 0.09), "Paint" if sp["spokes"] >= 5 else "Trim")
+    mb.box((0.0, 0.0, rr * 0.62), (0.07, 0.16, 0.09), "Caliper" if sp["kit"] else "Trim")
     obj = mb.build(name, mats)
     obj.location = pos
     if pos.x < 0:

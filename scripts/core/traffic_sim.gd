@@ -26,6 +26,7 @@ class Agent:
 	var width := 1.9
 	var braking := false
 	var ahead_of_player := true
+	var dir := -1               ## -1 travels with the player (-z), +1 oncoming
 
 	func occupies(l: int) -> bool:
 		return lane == l or target_lane == l
@@ -41,6 +42,8 @@ var lanes := 4
 var lane_width := 3.6
 ## Left lane (index 0, -x) is the fast lane.
 var lane_speeds: Array[float] = [31.0, 27.0, 23.5, 20.0]
+## Travel direction per lane: -1 with the player, +1 oncoming (two-way mode).
+var lane_dir: Array[int] = [-1, -1, -1, -1]
 var spawn_ahead_min := 210.0
 var spawn_ahead_max := 360.0
 var despawn_behind := 70.0
@@ -129,6 +132,7 @@ func spawn(lane: int, z: float, type_index: int) -> Agent:
 	a.width = t["width"]
 	a.desired_speed = lane_speeds[lane] * float(t["speed_mul"]) * rng.randf_range(0.92, 1.06)
 	a.speed = a.desired_speed
+	a.dir = lane_dir[lane]
 	agents.append(a)
 	return a
 
@@ -168,7 +172,7 @@ func update(dt: float, player_z: float, player_x: float, player_speed: float,
 		var z := player_z - rng.randf_range(spawn_ahead_min, spawn_ahead_max)
 		# When the player is slow, faster lanes refill from behind instead.
 		var player_lane := lane_of_x(player_x)
-		if player_speed < lane_speeds[lane] * 0.8 and lane != player_lane and rng.randf() < 0.5:
+		if lane_dir[lane] < 0 and player_speed < lane_speeds[lane] * 0.8 and lane != player_lane 				and rng.randf() < 0.5:
 			z = player_z + rng.randf_range(45.0, despawn_behind - 5.0)
 		if can_spawn(lane, z):
 			spawned.append(spawn(lane, z, pick_type()))
@@ -202,19 +206,23 @@ func _drive(dt: float, pz: float, px: float, pspeed: float, plen: float, pw: flo
 		elif rng.randf() < lane_change_rate * dt:
 			_try_lane_change(a, pz, px)
 
-		# Car following: nearest thing ahead in any lane this car occupies.
+		# Car following: nearest thing ahead (in this car's travel direction)
+		# in any lane it occupies.
 		var leader_gap := INF
 		var leader_speed := a.desired_speed
 		for b in agents:
-			if b == a or b.z >= a.z:
+			if b == a or b.dir != a.dir:
+				continue
+			var ahead := (a.z - b.z) * -a.dir
+			if ahead <= 0.0:
 				continue
 			if not (b.occupies(a.lane) or b.occupies(a.target_lane)):
 				continue
-			var g := a.z - b.z - (a.length + b.length) * 0.5
+			var g := ahead - (a.length + b.length) * 0.5
 			if g < leader_gap:
 				leader_gap = g
 				leader_speed = b.speed
-		if pz < a.z and absf(px - a.x) < (pw + a.width) * 0.5 + 0.5:
+		if a.dir < 0 and pz < a.z and absf(px - a.x) < (pw + a.width) * 0.5 + 0.5:
 			var g := a.z - pz - (a.length + plen) * 0.5
 			if g < leader_gap:
 				leader_gap = g
@@ -229,12 +237,12 @@ func _drive(dt: float, pz: float, px: float, pspeed: float, plen: float, pw: flo
 		a.speed = maxf(0.0, a.speed + acc * dt)
 		a.accel = acc
 		a.braking = acc < -1.2
-		a.z -= a.speed * dt
+		a.z += a.dir * a.speed * dt
 		# Hard guarantee: traffic never overlaps traffic.
 		if leader_gap < INF:
 			var new_gap := leader_gap - (a.speed - leader_speed) * dt
 			if new_gap < 0.6:
-				a.z += 0.6 - new_gap
+				a.z += -a.dir * (0.6 - new_gap)
 				a.speed = minf(a.speed, leader_speed)
 
 
@@ -242,7 +250,7 @@ func _try_lane_change(a: Agent, pz: float, px: float) -> void:
 	var options: Array[int] = []
 	for d in [-1, 1]:
 		var l: int = a.lane + d
-		if l < 0 or l >= lanes:
+		if l < 0 or l >= lanes or lane_dir[l] != a.dir:
 			continue
 		if not lane_free(l, a.z, a.length + 10.0, a):
 			continue

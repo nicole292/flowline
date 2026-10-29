@@ -152,3 +152,35 @@ func test_heavy_traffic_update_cost() -> void:
 	var per_frame_ms := (Time.get_ticks_usec() - start) / 600.0 / 1000.0
 	print("    traffic update with %d cars: %.3f ms/frame" % [s.agents.size(), per_frame_ms])
 	t.check(per_frame_ms < 1.0, "traffic logic under 1 ms/frame (%.3f)" % per_frame_ms)
+
+
+func test_two_way_traffic() -> void:
+	var s := _sim(4)
+	s.lane_dir = [1, 1, -1, -1]
+	s.lane_speeds = [23.0, 19.5, 25.0, 21.0]
+	s.density_ramp = 1.0
+	s.lane_change_rate = 0.5
+	var pz := 0.0
+	var px := s.lane_x(3)
+	s.populate(pz, 99999.0)
+	var bad := 0
+	var wrong_lane := 0
+	var oncoming_passes := 0
+	for i in 60 * 60:
+		pz -= 30.0 / 60.0
+		var before := {}
+		for a in s.agents:
+			before[a.id] = a.z
+		var res := s.update(1.0 / 60.0, pz, px, 30.0, 4.5, 1.9, 99999.0)
+		for a in s.agents:
+			if s.lane_dir[a.lane] != a.dir or s.lane_dir[a.target_lane] != a.dir:
+				wrong_lane += 1
+			if a.dir > 0 and before.has(a.id) and a.z < float(before[a.id]) - 0.01:
+				bad += 1
+		for p in res["passes"]:
+			if (p["agent"] as TrafficSim.Agent).dir > 0:
+				oncoming_passes += 1
+		bad += _overlaps(s)
+	t.check(bad == 0, "oncoming traffic moves towards the player and never overlaps (%d)" % bad)
+	t.check(wrong_lane == 0, "cars never drift into the other direction's lanes")
+	t.check(oncoming_passes > 10, "oncoming cars are passed (%d)" % oncoming_passes)
