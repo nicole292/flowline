@@ -14,6 +14,7 @@ their pivot at the hub, spinning around local X.
 
 import math
 import os
+import random
 import sys
 
 import bmesh
@@ -39,39 +40,45 @@ def spec(**kw):
         halfw=[(0, .86), (.06, .96), (.18, 1.0), (.82, 1.0), (.94, .93), (1, .78)],
         belt=None, zb=None,
         tail="bar", head="slim", exhaust=2, spokes=5, paint=(0.6, 0.6, 0.6),
-        bed=False, box=None, mirrors=True, stations=56,
+        bed=False, box=None, mirrors=True, stations=56, doors=4, trunk=False,
+        chrome_belt=False, plate=True,
     )
     base.update(kw)
     clr = base["clr"]
     if base["zb"] is None:
-        base["zb"] = [(0, clr + .26), (.04, clr + .08), (.12, clr), (.88, clr),
-                      (.96, clr + .07), (1, clr + .22)]
+        base["zb"] = [(0, clr + .22), (.04, clr + .07), (.12, clr), (.88, clr),
+                      (.965, clr + .05), (1, clr + .13)]
+    # Modern proportions: taller, blunter nose and bigger wheels.
+    if base["belt"] and not base["box"]:
+        base["belt"] = [(t, z + (0.075 * (t - 0.82) / 0.18 if t > 0.82 else 0.0)) for t, z in base["belt"]]
+    base["wr"] *= 1.06
+    base["roof_w"] = min(0.84, base["roof_w"] + 0.07)
     return base
 
 
 CARS = {
     # ---- player cars ------------------------------------------------------
-    "kestrel": spec(  # compact hot hatch, starter car
+    "kestrel": spec(doors=2,   # compact hot hatch, starter car
         L=4.06, W=1.80, wb=2.58, wr=0.33, roof=1.43, clr=0.15,
         cab_rear=0.05, rw_top=0.16, ws_top=0.56, cab_front=0.71,
         belt=[(0, .86), (.05, .93), (.3, .92), (.7, .86), (.9, .80), (1, .66)],
         tail="pair", paint=(0.85, 0.12, 0.08), spokes=6, roof_w=0.72),
-    "vanta": spec(  # sport coupe
+    "vanta": spec(doors=2, trunk=True,   # sport coupe
         L=4.48, W=1.90, wb=2.66, wr=0.345, roof=1.27, clr=0.13,
         cab_rear=0.17, rw_top=0.37, ws_top=0.555, cab_front=0.665,
         belt=[(0, .83), (.08, .90), (.35, .86), (.66, .79), (.9, .70), (1, .58)],
         paint=(0.06, 0.20, 0.55), spokes=5),
-    "meridian": spec(  # executive sedan
+    "meridian": spec(doors=4, trunk=True, chrome_belt=True,   # executive sedan
         L=4.86, W=1.87, wb=2.92, wr=0.35, roof=1.44, clr=0.15,
         cab_rear=0.19, rw_top=0.31, ws_top=0.585, cab_front=0.70,
         belt=[(0, .90), (.08, .96), (.3, .95), (.7, .88), (.9, .81), (1, .68)],
         paint=(0.12, 0.12, 0.13), spokes=10, tail="bar"),
-    "brute": spec(  # muscle car, long hood
+    "brute": spec(doors=2, trunk=True,   # muscle car, long hood
         L=4.78, W=1.94, wb=2.80, wr=0.36, tw=0.27, roof=1.33, clr=0.14,
         cab_rear=0.20, rw_top=0.35, ws_top=0.52, cab_front=0.615,
         belt=[(0, .88), (.06, .94), (.4, .90), (.62, .86), (.92, .82), (1, .72)],
         tail="pair", paint=(0.90, 0.55, 0.05), spokes=5, exhaust=2),
-    "solstice": spec(  # mid-engine supercar
+    "solstice": spec(doors=2,   # mid-engine supercar
         L=4.56, W=2.00, wb=2.70, wb_shift=-0.05, wr=0.35, tw=0.29, roof=1.14,
         clr=0.11, crown=0.03,
         cab_rear=0.30, rw_top=0.43, ws_top=0.53, cab_front=0.67,
@@ -80,7 +87,7 @@ CARS = {
         zb=[(0, .36), (.04, .19), (.12, .11), (.9, .11), (.97, .14), (1, .24)],
         paint=(0.80, 0.80, 0.82), spokes=10, roof_w=0.66, tail="bar"),
     # ---- traffic ----------------------------------------------------------
-    "t_sedan": spec(
+    "t_sedan": spec(doors=4, trunk=True, 
         L=4.65, W=1.80, wb=2.75, wr=0.33, roof=1.47, clr=0.16,
         cab_rear=0.20, rw_top=0.32, ws_top=0.60, cab_front=0.71,
         belt=[(0, .90), (.08, .96), (.3, .95), (.7, .90), (.9, .84), (1, .72)],
@@ -95,7 +102,7 @@ CARS = {
         cab_rear=0.03, rw_top=0.08, ws_top=0.63, cab_front=0.735, roof_w=0.76,
         belt=[(0, 1.08), (.05, 1.12), (.3, 1.12), (.7, 1.07), (.9, 1.02), (1, .90)],
         tail="pair", paint=(0.10, 0.11, 0.12), spokes=6, exhaust=1),
-    "t_van": spec(
+    "t_van": spec(doors=2, 
         L=5.25, W=2.00, wb=3.30, wb_shift=0.1, wr=0.36, roof=2.30, clr=0.20,
         cab_rear=0.005, rw_top=0.012, ws_top=0.80, cab_front=0.875, roof_w=0.82,
         bpillar=False,
@@ -108,7 +115,7 @@ CARS = {
         cab_rear=0.36, rw_top=0.375, ws_top=0.64, cab_front=0.73, roof_w=0.80,
         belt=[(0, 1.12), (.05, 1.17), (.4, 1.16), (.7, 1.12), (.9, 1.08), (1, .96)],
         bed=True, tail="pillar", paint=(0.55, 0.10, 0.08), spokes=6, exhaust=1),
-    "t_truck": spec(  # box truck: short cab + cargo box
+    "t_truck": spec(doors=2,   # box truck: short cab + cargo box
         L=7.6, W=2.30, wb=4.4, wb_shift=-0.2, wr=0.48, tw=0.30, roof=2.55, clr=0.38,
         cab_rear=0.68, rw_top=0.69, ws_top=0.86, cab_front=0.92, roof_w=0.84,
         bpillar=False,
@@ -190,10 +197,14 @@ def materials_for(paint):
                                    emit=(1.0, 0.97, 0.9), emit_str=1.5),
         "Taillight": make_material("Taillight", (0.30, 0.01, 0.01), 0.0, 0.15,
                                    emit=(1.0, 0.04, 0.02), emit_str=1.2),
+        "TailLens": make_material("TailLens", (0.22, 0.012, 0.012), 0.0, 0.06,
+                                  emit=(0.6, 0.02, 0.01), emit_str=0.25),
+        "Plate": make_material("Plate", (0.85, 0.85, 0.82), 0.0, 0.35),
     }
 
 
-MAT_ORDER = ["Paint", "Glass", "Trim", "Chrome", "Tire", "Rim", "Headlight", "Taillight"]
+MAT_ORDER = ["Paint", "Glass", "Trim", "Chrome", "Tire", "Rim", "Headlight", "Taillight",
+             "TailLens", "Plate"]
 
 
 class MeshBuilder:
@@ -202,6 +213,7 @@ class MeshBuilder:
     def __init__(self):
         self.verts = []
         self.faces = []  # (indices, material name)
+        self.creases = []  # (vert a, vert b, crease 0..1)
 
     def v(self, co):
         self.verts.append(Vector(co))
@@ -221,6 +233,17 @@ class MeshBuilder:
             poly.use_smooth = smooth
         mesh.validate()
         mesh.update()
+        if self.creases:
+            bm = bmesh.new()
+            bm.from_mesh(mesh)
+            bm.verts.ensure_lookup_table()
+            layer = bm.edges.layers.float.get("crease_edge") or bm.edges.layers.float.new("crease_edge")
+            for a, b, c in self.creases:
+                e = bm.edges.get((bm.verts[a], bm.verts[b]))
+                if e:
+                    e[layer] = c
+            bm.to_mesh(mesh)
+            bm.free()
         obj = bpy.data.objects.new(name, mesh)
         bpy.context.scene.collection.objects.link(obj)
         return obj
@@ -285,6 +308,9 @@ def section(sp, t):
     """Half cross-section points p0..p10 as (x, z)."""
     L, W = sp["L"], sp["W"]
     h = pchip(sp["halfw"], t) * W / 2
+    for wy in (sp["wb"] / 2 + sp["wb_shift"], -sp["wb"] / 2 + sp["wb_shift"]):
+        wt = 0.5 + wy / L
+        h *= 1.0 + 0.028 * math.exp(-((t - wt) / 0.075) ** 2)
     b = pchip(sp["zb"], t)
     e = pchip(sp["belt"], t)
     r = roof_z(sp, t)
@@ -298,7 +324,7 @@ def section(sp, t):
     ]
     hood_x = [0.90, 0.72, 0.52, 0.28, 0.0]
     hood_z = [e + 0.012, e + 0.6 * sp["crown"], e + 0.85 * sp["crown"], e + 0.95 * sp["crown"], hood]
-    tum = 1.0 - 0.06 * sp["tumble"]
+    tum = 1.0 - 0.03 * sp["tumble"]
     cab_x = [0.925, lerp(0.925, rw + 0.10, 0.45) * tum + 0.06 * (1 - tum), rw + 0.10, rw, 0.0]
     cab_z = [e + 0.015, e + 0.52 * (r - e), r - 0.055, r - 0.012, r]
     for hx, hz, cx, cz in zip(hood_x, hood_z, cab_x, cab_z):
@@ -335,6 +361,13 @@ def face_material(sp, t0, t1, k):
         return "Trim" if k >= 6 else "Paint"
     if sp["bed"] and tm < cr and k >= 6:
         return "Trim"
+    if k in (0, 1):  # underside + black sill
+        return "Trim"
+    if k == 5 and cr + 0.015 < tm < cf - 0.02:  # window seal / belt moulding
+        return "Chrome" if sp["chrome_belt"] else "Trim"
+    if k in (6, 7) and not sp["box"] and (cr <= tm <= rw or ws <= tm <= cf):
+        if not (cr + 0.015 < tm < cf - 0.02) or tm <= rw:
+            return "Trim"  # black glass-look pillars beside the rear glass
     if k in (6, 7):  # side glass band
         if cr + 0.015 < tm < cf - 0.02:
             if sp["bpillar"] and mid - 0.012 <= tm <= mid + 0.012:
@@ -344,6 +377,8 @@ def face_material(sp, t0, t1, k):
     if k == 9:  # windshield / rear window centre
         if ws <= tm <= cf or cr <= tm <= rw:
             return "Glass"
+    if k == 8 and (ws <= tm <= cf or cr <= tm <= rw):  # blacked-out pillars
+        return "Trim"
     return "Paint"
 
 
@@ -368,11 +403,18 @@ def build_body(sp, mats):
             jn = (j + 1) % npts
             mat = face_material(sp, ts[i], ts[i + 1], k_of(j))
             mb.f([rings[i][j], rings[i][jn], rings[i + 1][jn], rings[i + 1][j]], mat)
+        # character lines: sill, shoulder, glass line, roof rail
+        for k, c in ((2, 0.5), (5, 0.75), (6, 0.9), (8, 0.55)):
+            for j in (k, npts - k):
+                mb.creases.append((rings[i][j], rings[i + 1][j], c))
+    for ring in (rings[0], rings[-1]):
+        for j in range(npts):
+            mb.creases.append((ring[j], ring[(j + 1) % npts], 0.55))
     # end caps: two inset rings then an n-gon, so subdivision keeps a firm edge
     for ring, sign in ((rings[0], -1), (rings[-1], 1)):
         cen = sum((mb.verts[v] for v in ring), Vector()) / len(ring)
         prev = ring
-        for scale, push in ((0.965, 0.014), (0.72, 0.038)):
+        for scale, push in ((0.985, 0.007), (0.84, 0.022), (0.55, 0.03)):
             inner = []
             for v in ring:
                 p = mb.verts[v]
@@ -385,8 +427,11 @@ def build_body(sp, mats):
                 mb.f(quad if sign > 0 else list(reversed(quad)), "Paint")
             prev = inner
         mb.f(prev if sign < 0 else list(reversed(prev)), "Paint")
+        mb.flat_last = getattr(mb, "flat_last", []) + [len(mb.faces) - 1]
     obj = mb.build("Body", mats)
-    # make normals point outward
+    # flat-shade the planar cap centres (no subdivision shading pinch)
+    for fi in mb.flat_last:
+        obj.data.polygons[fi].use_smooth = False
     bm = bmesh.new()
     bm.from_mesh(obj.data)
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
@@ -424,7 +469,7 @@ def cut_arches(body, sp, mats):
     wr, tw = sp["wr"], sp["tw"]
     for _, pos in wheel_positions(sp):
         mb = MeshBuilder()
-        r = wr + 0.055
+        r = wr + 0.042
         side = 1 if pos.x > 0 else -1
         x_in = pos.x - side * (tw / 2 + 0.06)
         x_out = pos.x + side * 0.6
@@ -445,6 +490,53 @@ def cut_arches(body, sp, mats):
         bpy.context.view_layer.objects.active = body
         bpy.ops.object.modifier_apply(modifier=mod.name)
         bpy.data.objects.remove(cutter, do_unlink=True)
+
+
+def cut_panel_gaps(body, sp, mats):
+    """Thin dark grooves for door, hood and boot shut lines."""
+    L, W = sp["L"], sp["W"]
+    gap = 0.007
+    mb = MeshBuilder()
+
+    def y_of(t):
+        return -L / 2 + t * L
+
+    zb_mid = pchip(sp["zb"], 0.5)
+    cr, rw, ws, cf = sp["cab_rear"], sp["rw_top"], sp["ws_top"], sp["cab_front"]
+    door_lines = []
+    if sp["doors"] == 4:
+        door_lines = [cf - 0.012, (rw + ws) / 2, cr + 0.05]
+    elif sp["doors"] == 2:
+        door_lines = [cf - 0.012, max(cr + 0.04, rw - 0.03)]
+    if sp["box"]:
+        door_lines = [cf - 0.012, sp["box"]["t1"] + 0.02]
+    for t in door_lines:
+        belt = pchip(sp["belt"], t)
+        z0, z1 = zb_mid + 0.10, belt - 0.005
+        for side in (-1, 1):
+            h = pchip(sp["halfw"], t) * W / 2
+            mb.box((side * (h + 0.05), y_of(t), (z0 + z1) / 2), (0.12, gap, z1 - z0), "Trim")
+    # hood shut line just ahead of the windshield, boot line behind the rear glass
+    lids = [cf + 0.03]
+    if sp["trunk"]:
+        lids.append(cr - 0.02)
+    for t in lids:
+        if t <= 0.02 or t >= 0.98:
+            continue
+        belt = pchip(sp["belt"], t)
+        h = pchip(sp["halfw"], t) * W / 2
+        mb.box((0, y_of(t), belt + 0.08), (2 * h * 0.86, gap, 0.16), "Trim")
+    if not mb.faces:
+        return
+    cutter = mb.build("GapCutter", mats, smooth=False)
+    mod = body.modifiers.new("gaps", "BOOLEAN")
+    mod.operation = "DIFFERENCE"
+    mod.solver = "EXACT"
+    mod.material_mode = "TRANSFER"
+    mod.object = cutter
+    bpy.context.view_layer.objects.active = body
+    bpy.ops.object.modifier_apply(modifier=mod.name)
+    bpy.data.objects.remove(cutter, do_unlink=True)
 
 
 # ---------------------------------------------------------------------------
@@ -507,22 +599,29 @@ def build_details(sp, body, mats):
     mb = MeshBuilder()
     n = 14
 
-    # --- tail lights ---
+    # --- tail lights: dark red lens with a lit inner strip ---
     tz = belt_r - 0.09
     if sp["tail"] == "bar":
         xs = [lerp(-0.86 * hr, 0.86 * hr, i / (n * 2)) for i in range(n * 2 + 1)]
-        ribbon(mb, surf, xs, tz, 0.055, False, "Taillight")
+        ribbon(mb, surf, xs, tz, 0.07, False, "TailLens", out=0.012)
+        ribbon(mb, surf, xs, tz + 0.012, 0.018, False, "Taillight", out=0.016)
         for s in (-1, 1):
-            xs = [s * lerp(0.62 * hr, 0.88 * hr, i / 6) for i in range(7)]
-            ribbon(mb, surf, sorted(xs), tz - 0.05, 0.06, False, "Taillight")
+            xs = sorted(s * lerp(0.60 * hr, 0.88 * hr, i / 6) for i in range(7))
+            ribbon(mb, surf, xs, tz - 0.045, 0.05, False, "Taillight", out=0.014)
     elif sp["tail"] == "pair":
         for s in (-1, 1):
-            xs = sorted(s * lerp(0.48 * hr, 0.88 * hr, i / 8) for i in range(9))
-            ribbon(mb, surf, xs, tz, 0.11, False, "Taillight")
+            xs = sorted(s * lerp(0.46 * hr, 0.88 * hr, i / 8) for i in range(9))
+            ribbon(mb, surf, xs, tz, 0.12, False, "TailLens", out=0.012)
+            xs = sorted(s * lerp(0.52 * hr, 0.84 * hr, i / 6) for i in range(7))
+            ribbon(mb, surf, xs, tz + 0.02, 0.022, False, "Taillight", out=0.016)
+            ribbon(mb, surf, xs, tz - 0.028, 0.022, False, "Taillight", out=0.016)
     else:  # tall pillar lights (vans, trucks)
         for s in (-1, 1):
             xs = sorted(s * lerp(0.80 * hr, 0.92 * hr, i / 3) for i in range(4))
-            ribbon(mb, surf, xs, (zb_r + belt_r) / 2 + 0.05, 0.42, False, "Taillight")
+            zc = (zb_r + belt_r) / 2 + 0.05
+            ribbon(mb, surf, xs, zc, 0.42, False, "TailLens", out=0.012)
+            ribbon(mb, surf, xs, zc + 0.1, 0.08, False, "Taillight", out=0.016)
+            ribbon(mb, surf, xs, zc - 0.1, 0.08, False, "Taillight", out=0.016)
     # rear diffuser / bumper insert
     xs = [lerp(-0.74 * hr, 0.74 * hr, i / (n * 2)) for i in range(n * 2 + 1)]
     ribbon(mb, surf, xs, zb_r + 0.06, 0.10, False, "Trim", out=0.01)
@@ -542,18 +641,56 @@ def build_details(sp, body, mats):
         pipe.location = (x, y + 0.02, zb_r + 0.07)
         pipe.parent = body
 
-    # --- headlights ---
+    # --- headlights: chrome reflector housing, DRL strip and projector ---
     hz = belt_f - 0.09
     for s in (-1, 1):
         xs = sorted(s * lerp(0.42 * hf, 0.90 * hf, i / 10) for i in range(11))
         lift = (lambda x, s=s: 0.03 * ((abs(x) / hf - 0.42) / 0.48))
-        ribbon(mb, surf, xs, hz, 0.06 if sp["head"] == "slim" else 0.11, True, "Headlight",
-               curve=lift)
+        tall = 0.075 if sp["head"] == "slim" else 0.12
+        ribbon(mb, surf, xs, hz, tall, True, "Chrome", out=0.008, curve=lift)
+        ribbon(mb, surf, xs, hz + tall * 0.5 - 0.012, 0.014, True, "Headlight", out=0.013, curve=lift)
+        px = s * 0.62 * hf
+        py = surf.y_extent(px, hz, True)
+        if py is not None:
+            mb.box((px, py + 0.006, hz - 0.008), (0.07, 0.02, 0.045), "Headlight")
     # grille + lower intake
-    xs = [lerp(-0.36 * hf, 0.36 * hf, i / 12) for i in range(13)]
-    ribbon(mb, surf, xs, (zb_f + belt_f) / 2 - 0.03, 0.12, True, "Trim", out=0.006)
-    xs = [lerp(-0.70 * hf, 0.70 * hf, i / 20) for i in range(21)]
-    ribbon(mb, surf, xs, zb_f + 0.07, 0.07, True, "Trim", out=0.006)
+    xs = [lerp(-0.48 * hf, 0.48 * hf, i / 16) for i in range(17)]
+    ribbon(mb, surf, xs, (zb_f + belt_f) / 2 - 0.01, 0.17, True, "Trim", out=0.006)
+    xs = [lerp(-0.76 * hf, 0.76 * hf, i / 22) for i in range(23)]
+    ribbon(mb, surf, xs, zb_f + 0.08, 0.09, True, "Trim", out=0.006)
+
+    # --- number plates: white plate, dark frame and characters ---
+    if sp["plate"]:
+        rng = random.Random(len(sp["belt"]) * 31 + int(L * 100))
+        for front, z in ((False, zb_r + 0.27), (True, zb_f + 0.16)):
+            y = surf.y_extent(0.0, z, front)
+            if y is None:
+                continue
+            sg = 1 if front else -1
+            mb.box((0, y + sg * 0.004, z), (0.53, 0.012, 0.125), "Trim")
+            mb.box((0, y + sg * 0.009, z), (0.50, 0.008, 0.105), "Plate")
+            x = -0.20
+            for c in range(7):
+                if c == 2:
+                    x += 0.03
+                w = 0.036 if rng.random() > 0.3 else 0.026
+                mb.box((x + w / 2, y + sg * 0.0135, z), (w * 0.8, 0.003, 0.064), "Trim")
+                x += 0.056
+
+    # --- door handles ---
+    cr, rw, ws, cf = sp["cab_rear"], sp["rw_top"], sp["ws_top"], sp["cab_front"]
+    handle_ts = [(rw + ws) / 2 + 0.03]
+    if sp["doors"] == 4:
+        handle_ts.append(cr + 0.08)
+    if sp["box"]:
+        handle_ts = [sp["box"]["t1"] + 0.05]
+    for t in handle_ts:
+        z = pchip(sp["belt"], t) - 0.085
+        y = -L / 2 + t * L
+        for s in (-1, 1):
+            x = surf.x_extent(y, z, s)
+            if x is not None:
+                mb.box((x + s * 0.008, y, z), (0.022, 0.14, 0.028), "Chrome" if sp["chrome_belt"] else "Paint")
 
     # --- mirrors ---
     if sp["mirrors"]:
@@ -648,6 +785,7 @@ def build_car(name, sp):
     bpy.context.scene.collection.objects.link(root)
     body = build_body(sp, mats)
     cut_arches(body, sp, mats)
+    cut_panel_gaps(body, sp, mats)
     body.data.set_sharp_from_angle(angle=math.radians(50))
     build_details(sp, body, mats)
     body.parent = root
@@ -657,11 +795,39 @@ def build_car(name, sp):
     return root
 
 
+def bake_ao(sp):
+    """Bakes ambient occlusion into a colour attribute on every mesh, with a
+    ground plane present so wheel arches and sills darken naturally."""
+    scene = bpy.context.scene
+    scene.render.engine = "CYCLES"
+    scene.cycles.device = "CPU"
+    scene.cycles.samples = 48
+    if scene.world is None:
+        scene.world = bpy.data.worlds.new("BakeWorld")
+    scene.world.light_settings.distance = 0.55
+    bpy.ops.mesh.primitive_plane_add(size=sp["L"] * 3)
+    ground = bpy.context.active_object
+    meshes = [o for o in scene.objects if o.type == "MESH" and o != ground]
+    for o in meshes:
+        attr = o.data.color_attributes.new("AO", "BYTE_COLOR", "POINT")
+        o.data.color_attributes.active_color = attr
+    for o in meshes:
+        for x in scene.objects:
+            x.select_set(False)
+        o.select_set(True)
+        bpy.context.view_layer.objects.active = o
+        bpy.ops.object.bake(type="AO", target="VERTEX_COLORS")
+    bpy.data.objects.remove(ground, do_unlink=True)
+
+
 def export(root, path):
     for o in bpy.context.scene.objects:
         o.select_set(True)
-    bpy.ops.export_scene.gltf(filepath=path, export_format="GLB", use_selection=True,
-                              export_apply=True, export_yup=True)
+    kw = dict(filepath=path, export_format="GLB", use_selection=True, export_apply=True, export_yup=True)
+    try:
+        bpy.ops.export_scene.gltf(**kw, export_vertex_color="ACTIVE")
+    except TypeError:
+        bpy.ops.export_scene.gltf(**kw, export_colors=True)
 
 
 def render_previews(name, sp):
@@ -672,14 +838,37 @@ def render_previews(name, sp):
     world = bpy.data.worlds.new("W")
     world.use_nodes = True
     bg = world.node_tree.nodes["Background"]
-    bg.inputs[0].default_value = (0.55, 0.65, 0.8, 1)
-    bg.inputs[1].default_value = 0.9
+    hdri = os.path.join(ROOT, "..", "flowline_raw", "hdri", "sky_2k.hdr")
+    if os.path.exists(hdri):
+        env = world.node_tree.nodes.new("ShaderNodeTexEnvironment")
+        env.image = bpy.data.images.load(hdri)
+        world.node_tree.links.new(env.outputs["Color"], bg.inputs["Color"])
+        bg.inputs[1].default_value = 1.0
+    else:
+        bg.inputs[0].default_value = (0.55, 0.65, 0.8, 1)
     scene.world = world
+    # show the baked AO in previews, like the game does
+    for mat in bpy.data.materials:
+        if not mat.use_nodes:
+            continue
+        nt = mat.node_tree
+        bsdf = nt.nodes.get("Principled BSDF")
+        if bsdf is None or bsdf.inputs["Base Color"].is_linked:
+            continue
+        ca = nt.nodes.new("ShaderNodeVertexColor")
+        ca.layer_name = "AO"
+        mix = nt.nodes.new("ShaderNodeMix")
+        mix.data_type = "RGBA"
+        mix.blend_type = "MULTIPLY"
+        mix.inputs["Factor"].default_value = 1.0
+        mix.inputs["A"].default_value = bsdf.inputs["Base Color"].default_value
+        nt.links.new(ca.outputs["Color"], mix.inputs["B"])
+        nt.links.new(mix.outputs["Result"], bsdf.inputs["Base Color"])
     bpy.ops.mesh.primitive_plane_add(size=60)
     ground = bpy.context.active_object
     ground.data.materials.append(make_material("Ground", (0.12, 0.12, 0.13), 0, 0.8))
     sun = bpy.data.objects.new("Sun", bpy.data.lights.new("Sun", "SUN"))
-    sun.data.energy = 4.0
+    sun.data.energy = 3.0
     sun.rotation_euler = (math.radians(50), 0, math.radians(35))
     scene.collection.objects.link(sun)
     cam = bpy.data.objects.new("Cam", bpy.data.cameras.new("Cam"))
@@ -711,6 +900,8 @@ def main():
         if only and name not in only:
             continue
         root = build_car(name, sp)
+        if "--no-ao" not in argv:
+            bake_ao(sp)
         tris = sum(len(p.vertices) - 2 for o in bpy.context.scene.objects if o.type == "MESH"
                    for p in o.data.polygons)
         export(root, os.path.join(OUT_DIR, name + ".glb"))

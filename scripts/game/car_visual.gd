@@ -30,10 +30,10 @@ static func shared_material(key: String) -> Material:
 	var m := StandardMaterial3D.new()
 	match key:
 		"Glass":
-			m.albedo_color = Color(0.02, 0.025, 0.03)
-			m.metallic = 0.0
-			m.roughness = 0.04
-			m.metallic_specular = 0.9
+			m.albedo_color = Color(0.012, 0.016, 0.02)
+			m.metallic = 0.15
+			m.roughness = 0.02
+			m.metallic_specular = 1.0
 		"Trim":
 			m.albedo_color = Color(0.025, 0.025, 0.028)
 			m.roughness = 0.55
@@ -54,11 +54,21 @@ static func shared_material(key: String) -> Material:
 			m.emission = Color(1.0, 0.97, 0.9)
 			m.emission_energy_multiplier = 1.2
 			m.roughness = 0.1
+		"TailLens":
+			m.albedo_color = Color(0.18, 0.01, 0.01)
+			m.roughness = 0.05
+			m.metallic_specular = 0.9
+			m.emission_enabled = true
+			m.emission = Color(1.0, 0.03, 0.02)
+			m.emission_energy_multiplier = 0.25
+		"Plate":
+			m.albedo_color = Color(0.86, 0.86, 0.83)
+			m.roughness = 0.35
 		"TailOff":
 			m.albedo_color = Color(0.32, 0.02, 0.02)
 			m.emission_enabled = true
 			m.emission = Color(1.0, 0.05, 0.03)
-			m.emission_energy_multiplier = 0.9
+			m.emission_energy_multiplier = 1.6
 			m.roughness = 0.15
 		"TailOn":
 			m.albedo_color = Color(0.6, 0.03, 0.02)
@@ -90,6 +100,9 @@ static func shared_material(key: String) -> Material:
 			m.disable_receive_shadows = true
 		_:
 			m.albedo_color = Color.MAGENTA
+	# Baked ambient occlusion lives in the vertex colours of every car mesh.
+	if key != "Shadow" and key != "Blinker":
+		m.vertex_color_use_as_albedo = true
 	_shared[key] = m
 	return m
 
@@ -111,8 +124,9 @@ func setup(id: String, paint: Color, with_blinkers := false) -> void:
 	_model = load_scene(id).instantiate()
 	add_child(_model)
 	_paint = StandardMaterial3D.new()
-	_paint.metallic = 0.5
-	_paint.roughness = 0.28
+	_paint.vertex_color_use_as_albedo = true
+	_paint.metallic = 0.45
+	_paint.roughness = 0.32
 	_paint.clearcoat_enabled = true
 	_paint.clearcoat = 1.0
 	_paint.clearcoat_roughness = 0.08
@@ -153,7 +167,7 @@ func _apply_materials(n: Node) -> void:
 				"Taillight":
 					mi.set_surface_override_material(i, shared_material("TailOff"))
 					_tail_slots.append([mi, i])
-				"Glass", "Trim", "Chrome", "Tire", "Rim", "Headlight":
+				"Glass", "Trim", "Chrome", "Tire", "Rim", "Headlight", "TailLens", "Plate":
 					mi.set_surface_override_material(i, shared_material(key))
 	for c in n.get_children():
 		_apply_materials(c)

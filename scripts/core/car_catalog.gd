@@ -4,14 +4,14 @@ extends RefCounted
 ## Lengths/widths match tools/blender/build_cars.py.
 
 const PLAYER_CARS := [
-	{"id": "kestrel", "name": "Kestrel", "class": "Hot hatch", "price": 0,
+	{"id": "vanta", "name": "Vanta GT", "class": "Sport coupe", "price": 0,
+	 "paint": Color(0.05, 0.17, 0.50), "length": 4.48, "width": 1.90,
+	 "stats": {"top_speed": 56.0, "accel": 7.6, "brake_decel": 13.0,
+			   "lat_max": 7.0, "steer_response": 5.2, "lat_grip": 15.0}},
+	{"id": "kestrel", "name": "Kestrel", "class": "Hot hatch", "price": 18000,
 	 "paint": Color(0.80, 0.10, 0.07), "length": 4.06, "width": 1.80,
 	 "stats": {"top_speed": 52.0, "accel": 7.0, "brake_decel": 12.0,
 			   "lat_max": 6.6, "steer_response": 4.6, "lat_grip": 14.0}},
-	{"id": "vanta", "name": "Vanta GT", "class": "Sport coupe", "price": 18000,
-	 "paint": Color(0.05, 0.17, 0.50), "length": 4.48, "width": 1.90,
-	 "stats": {"top_speed": 60.0, "accel": 8.0, "brake_decel": 13.0,
-			   "lat_max": 7.0, "steer_response": 5.2, "lat_grip": 15.0}},
 	{"id": "meridian", "name": "Meridian", "class": "Executive sedan", "price": 32000,
 	 "paint": Color(0.09, 0.09, 0.10), "length": 4.86, "width": 1.87,
 	 "stats": {"top_speed": 64.0, "accel": 7.8, "brake_decel": 13.5,

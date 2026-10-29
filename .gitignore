@@ -1,3 +1,4 @@
 *.tmp
 .godot/
 /build/
+/previews/game/

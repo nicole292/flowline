@@ -9,14 +9,18 @@ signal pause_pressed
 signal resume_pressed
 signal restart_pressed
 
-const ACCENT := Color(0.25, 0.95, 0.85)
-const FLOW_COL := Color(1.0, 0.45, 0.15)
-const PANEL_BG := Color(0.04, 0.05, 0.07, 0.82)
+const ACCENT := Color(1.0, 0.74, 0.18)
+const FLOW_COL := Color(1.0, 0.42, 0.14)
+const PANEL_BG := Color(0.05, 0.055, 0.065, 0.86)
+const BOLD := preload("res://assets/fonts/BarlowSemiCondensed-Bold.ttf")
+const MEDIUM := preload("res://assets/fonts/BarlowSemiCondensed-Medium.ttf")
 
 var steer_axis := 0.0
 var brake_held := false
 
 var _score: Label
+var _score_cap: Label
+var _best: Label
 var _mult: Label
 var _dist: Label
 var _speed: Label
@@ -47,11 +51,14 @@ func _ready() -> void:
 
 # ---------------------------------------------------------------- building
 
-func _label(size: int, color := Color.WHITE, outline := 6) -> Label:
+func _label(size: int, color := Color.WHITE, outline := 6, bold := true) -> Label:
 	var l := Label.new()
+	l.add_theme_font_override("font", BOLD if bold else MEDIUM)
 	l.add_theme_font_size_override("font_size", size)
 	l.add_theme_color_override("font_color", color)
-	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.55))
+	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.45))
+	l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.35))
+	l.add_theme_constant_override("shadow_offset_y", 2)
 	l.add_theme_constant_override("outline_size", outline)
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return l
@@ -62,10 +69,14 @@ func _button(text: String, primary := false) -> Button:
 	b.text = text
 	b.custom_minimum_size = Vector2(280, 72)
 	b.add_theme_font_size_override("font_size", 30)
+	b.add_theme_font_override("font", BOLD)
 	for state in ["normal", "hover", "pressed", "focus"]:
 		var sb := StyleBoxFlat.new()
-		sb.set_corner_radius_all(14)
-		var base := ACCENT if primary else Color(1, 1, 1, 0.12)
+		sb.set_corner_radius_all(10)
+		var base := ACCENT if primary else Color(1, 1, 1, 0.1)
+		if not primary:
+			sb.border_color = Color(1, 1, 1, 0.25)
+			sb.set_border_width_all(1)
 		sb.bg_color = base.darkened(0.15) if state == "pressed" else base
 		if state == "focus":
 			sb.bg_color = Color(0, 0, 0, 0)
@@ -92,7 +103,9 @@ func _panel() -> PanelContainer:
 
 
 func _build() -> void:
-	_score = _label(46)
+	_score_cap = _label(17, Color(1, 1, 1, 0.65), 3, false)
+	_score_cap.text = "SCORE"
+	_score = _label(48)
 	_mult = _label(24, FLOW_COL)
 	_dist = _label(30)
 	_dist.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -113,27 +126,39 @@ func _build() -> void:
 	_pause_btn.custom_minimum_size = Vector2(64, 64)
 	_pause_btn.pressed.connect(func(): pause_pressed.emit())
 	_pause_btn.focus_mode = Control.FOCUS_NONE
-	for n in [_controls, _score, _mult, _dist, _speed, _speed_unit, _flow_bar, _popup_root, _pause_btn]:
+	for n in [_controls, _score_cap, _score, _mult, _dist, _speed, _speed_unit, _flow_bar, _popup_root, _pause_btn]:
 		add_child(n)
 		_gameplay_nodes.append(n)
 
 	# Start overlay
 	_start_panel = Control.new()
 	_start_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
-	var shade := ColorRect.new()
-	shade.color = Color(0, 0, 0, 0.25)
-	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
-	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_start_panel.add_child(shade)
-	var title := _label(110, Color.WHITE, 10)
+	var side := TextureRect.new()
+	var grad := Gradient.new()
+	grad.set_color(0, Color(0.02, 0.025, 0.03, 0.82))
+	grad.set_color(1, Color(0.02, 0.025, 0.03, 0.0))
+	var gt := GradientTexture2D.new()
+	gt.gradient = grad
+	gt.fill_from = Vector2(0.35, 0)
+	gt.fill_to = Vector2(1, 0)
+	side.texture = gt
+	side.stretch_mode = TextureRect.STRETCH_SCALE
+	side.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	side.name = "Side"
+	_start_panel.add_child(side)
+	var title := _label(118, Color.WHITE, 0)
 	title.text = "FLOWLINE"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	title.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	title.name = "Title"
 	_start_panel.add_child(title)
-	var tag := _label(26, Color(1, 1, 1, 0.85), 5)
+	var tag := _label(26, Color(1, 1, 1, 0.85), 0, false)
 	tag.text = "Pass close to traffic to build Flow. Fill it for double points."
-	tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tag.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_best = _label(22, ACCENT, 0)
+	_best.name = "Best"
+	_start_panel.add_child(_best)
 	tag.name = "Tag"
 	_start_panel.add_child(tag)
 	var go := _button("DRIVE", true)
@@ -145,7 +170,7 @@ func _build() -> void:
 	hint.text = "Left thumb: steer    Right thumb: brake    The car accelerates by itself"
 	if not OS.has_feature("mobile"):
 		hint.text += "    (Keyboard: arrows or A/D to steer, S or Space to brake)"
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	hint.name = "Hint"
 	_start_panel.add_child(hint)
 	add_child(_start_panel)
@@ -216,8 +241,9 @@ func _layout() -> void:
 				(c as Control).position = Vector2.ZERO
 				(c as Control).size = vp
 	var s := _safe
-	_score.position = s.position
-	_mult.position = s.position + Vector2(2, 54)
+	_score_cap.position = s.position + Vector2(2, -6)
+	_score.position = s.position + Vector2(0, 10)
+	_mult.position = s.position + Vector2(2, 66)
 	_dist.size = Vector2(300, 40)
 	_dist.position = Vector2(s.end.x - 300 - 84, s.position.y + 8)
 	_pause_btn.position = Vector2(s.end.x - 64, s.position.y)
@@ -231,16 +257,22 @@ func _layout() -> void:
 	_controls.size = vp
 	_controls.queue_redraw()
 	var title: Label = _start_panel.get_node("Title")
-	title.size = Vector2(vp.x, 130)
-	title.position = Vector2(0, vp.y * 0.07)
+	var side: TextureRect = _start_panel.get_node("Side")
+	side.position = Vector2.ZERO
+	side.size = Vector2(vp.x * 0.62, vp.y)
+	var lx := s.position.x + 24
+	title.size = Vector2(vp.x * 0.6, 130)
+	title.position = Vector2(lx - 6, vp.y * 0.16)
 	var tag: Label = _start_panel.get_node("Tag")
-	tag.size = Vector2(vp.x, 40)
-	tag.position = Vector2(0, vp.y * 0.07 + 128)
+	tag.size = Vector2(minf(vp.x * 0.42, 520.0), 70)
+	tag.position = Vector2(lx, vp.y * 0.16 + 132)
+	_best.size = Vector2(vp.x * 0.5, 30)
+	_best.position = Vector2(lx, vp.y * 0.16 + 220)
 	var go: Button = _start_panel.get_node("Go")
-	go.position = Vector2(vp.x * 0.5 - 160, vp.y * 0.74)
+	go.position = Vector2(lx, vp.y * 0.66)
 	var hint: Label = _start_panel.get_node("Hint")
-	hint.size = Vector2(vp.x, 30)
-	hint.position = Vector2(0, s.end.y - 24)
+	hint.size = Vector2(vp.x * 0.7, 30)
+	hint.position = Vector2(lx, s.end.y - 24)
 
 
 # ---------------------------------------------------------------- touch
@@ -405,6 +437,10 @@ func popup(text: String, sub: String, color: Color, big := false) -> void:
 func _set_gameplay_visible(v: bool) -> void:
 	for n in _gameplay_nodes:
 		n.visible = v
+
+
+func set_best(score: int) -> void:
+	_best.text = "BEST  %s" % _fmt(score) if score > 0 else ""
 
 
 func show_start() -> void:

@@ -33,6 +33,7 @@ var player_z := 0.0
 var _views := {}      # agent id -> CarVisual
 var _pools := {}      # type index -> Array of free CarVisual
 var _prev_x := {}     # agent id -> x last frame
+var _oncoming: Array[Dictionary] = []  # visual-only traffic on the other carriageway
 var _crash := {}
 var _menu_t := 0.0
 var _flash: ColorRect
@@ -152,6 +153,7 @@ func _reset_player() -> void:
 func _enter_menu() -> void:
 	state = State.MENU
 	_clear_traffic()
+	hud.set_best(save.best_score)
 	hud.show_start()
 
 
@@ -167,6 +169,7 @@ func start_run() -> void:
 	model.speed = 22.0
 	for a in sim.populate(player_z, 0.0):
 		_on_spawn(a)
+	camera.h_offset = 0.0
 	camera.snap(player_root.position)
 	hud.show_playing()
 	audio.start_engine()
@@ -259,12 +262,51 @@ func _release_view(type_index: int, v: CarVisual) -> void:
 
 
 func _clear_traffic() -> void:
+	for o in _oncoming:
+		_release_view(o["type"], o["view"])
+	_oncoming.clear()
 	for a in sim.agents:
 		_on_despawn(a)
 	sim.clear()
 	if _crash.has("view"):
 		_release_view(_crash["type"], _crash["view"])
 	_crash = {}
+
+
+## Oncoming cars behind the median: no collisions, they just make the road live.
+func _update_oncoming(dt: float) -> void:
+	for i in range(_oncoming.size() - 1, -1, -1):
+		var o := _oncoming[i]
+		o["z"] += float(o["speed"]) * dt
+		var v: CarVisual = o["view"]
+		v.position.z = o["z"]
+		v.animate(dt, o["speed"], 0.0, 0.0, 0.0)
+		if float(o["z"]) > player_z + HighwayWorld.BEHIND:
+			_release_view(o["type"], v)
+			_oncoming.remove_at(i)
+	var want := 4 + int(clampf(score.distance / 3000.0, 0.0, 1.0) * 5.0)
+	if _oncoming.size() < want and sim.rng.randf() < dt * 3.0:
+		var lane := sim.rng.randi_range(0, 3)
+		var z := player_z - sim.rng.randf_range(380.0, 620.0)
+		for o in _oncoming:
+			if o["lane"] == lane and absf(float(o["z"]) - z) < 45.0:
+				return
+		var ti := sim.pick_type()
+		var pool: Array = _pools.get(ti, [])
+		var v: CarVisual
+		if pool.is_empty():
+			v = CarVisual.new()
+			add_child(v)
+			v.setup(CarCatalog.TRAFFIC[ti]["id"], Color.WHITE, true)
+		else:
+			v = pool.pop_back()
+			v.visible = true
+		v.set_paint(CarCatalog.random_paint(sim.rng))
+		var x := HighwayWorld.OPP_CENTER + (lane - 1.5) * HighwayWorld.LANE_W
+		v.position = Vector3(x, 0, z)
+		v.rotation = Vector3(0, PI, 0)
+		_oncoming.append({"view": v, "type": ti, "lane": lane, "z": z,
+				"speed": [21.0, 24.5, 28.0, 31.0][lane] * sim.rng.randf_range(0.95, 1.05)})
 
 
 func _sync_traffic(dt: float) -> void:
@@ -292,7 +334,8 @@ func _process(dt: float) -> void:
 			var ang := _menu_t * 0.12 + 0.6
 			camera.global_position = target + Vector3(sin(ang) * 7.5, 1.6, cos(ang) * 7.5)
 			camera.look_at(target + Vector3(0, 0.6, 0))
-			camera.fov = 50.0
+			camera.fov = 48.0
+			camera.h_offset = -2.4
 		State.PLAYING:
 			_drive(dt)
 		State.CRASHING:
@@ -352,6 +395,7 @@ func _drive(dt: float) -> void:
 	var hit := sim.collide(model.x, player_z, player_view.length, player_view.width)
 	_update_player_view(dt, inp[1])
 	_sync_traffic(dt)
+	_update_oncoming(dt)
 	if hit:
 		_begin_crash(hit)
 	_maybe_rebase()
@@ -465,6 +509,7 @@ func _update_crash(dt: float) -> void:
 	for a in res["spawned"]:
 		_on_spawn(a)
 	_sync_traffic(dt)
+	_update_oncoming(dt)
 	world.update(player_z)
 	camera.follow(dt, player_root.position, maxf(model.speed, 1.0), model.top_speed, -8.0, 0.0)
 	if c["t"] >= CRASH_TIME:

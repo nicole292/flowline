@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FLOWLINE – Highway Racing</title>
+<meta name="description" content="FLOWLINE is a highway traffic racing game for phones. Weave through traffic, pass close to build Flow, and fill it for double points.">
+<link rel="icon" href="img/icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root { --bg: #0d0f12; --card: #16191e; --ink: #f2f3f5; --soft: #a7adb7; --line: #2a2f37; --accent: #ffbd2e; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 18px/1.55 "Barlow Semi Condensed", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 0 16px 56px; }
+  header { display: flex; align-items: center; gap: 14px; padding: 22px 0; }
+  header img { width: 52px; height: 52px; border-radius: 12px; }
+  header b { font-size: 26px; letter-spacing: 0.04em; }
+  .hero { position: relative; border-radius: 18px; overflow: hidden; border: 1px solid var(--line); }
+  .hero img { display: block; width: 100%; height: auto; }
+  h1 { font-size: clamp(34px, 6vw, 56px); line-height: 1.05; margin: 28px 0 10px; letter-spacing: 0.01em; }
+  p { color: var(--soft); margin: 0 0 14px; }
+  .lead { font-size: 21px; color: #d6dae0; max-width: 680px; }
+  .download { display: inline-flex; align-items: center; gap: 12px; margin: 18px 0 6px; padding: 16px 28px;
+              border-radius: 12px; background: var(--accent); color: #111; font-weight: 700; font-size: 22px;
+              text-decoration: none; letter-spacing: 0.03em; }
+  .download:hover { filter: brightness(1.06); }
+  .small { font-size: 15px; color: #8b919b; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin: 30px 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
+  .card h3 { margin: 0 0 6px; font-size: 21px; color: var(--ink); }
+  .card p { margin: 0; font-size: 17px; }
+  h2 { font-size: 28px; margin: 40px 0 10px; }
+  ol { color: var(--soft); padding-left: 22px; }
+  ol li { margin-bottom: 8px; }
+  ol b { color: var(--ink); }
+  .shot { border-radius: 14px; overflow: hidden; border: 1px solid var(--line); margin-top: 14px; }
+  .shot img { display: block; width: 100%; height: auto; }
+  footer { margin-top: 48px; padding-top: 18px; border-top: 1px solid var(--line); font-size: 15px; color: #7d838d; }
+  footer a, a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <header><img src="img/icon.png" alt=""><b>FLOWLINE</b></header>
+  <div class="hero"><img src="img/shot-traffic.png" alt="A blue sports coupe on a four-lane highway with trucks and cars ahead"></div>
+
+  <h1>Weave through traffic.<br>Stay in the Flow.</h1>
+  <p class="lead">FLOWLINE is a highway racing game for phones. Pass close to traffic to build Flow. Fill the meter and Flow Drive doubles every point – until you bump into something.</p>
+  <a class="download" href="https://github.com/nicole292/flowline/releases/latest/download/flowline.apk">Download for Android</a>
+  <p class="small">Free test version · about 60 MB · Android 7 or newer, 64-bit phones · iPhone version coming later</p>
+
+  <div class="grid">
+    <div class="card"><h3>Simple controls</h3><p>The car accelerates by itself. Left thumb steers, right thumb brakes.</p></div>
+    <div class="card"><h3>Near misses pay</h3><p>The closer the pass, the bigger the bonus. Chain them for a streak.</p></div>
+    <div class="card"><h3>Real highway</h3><p>Sign gantries, bridges, oncoming traffic and a real sky.</p></div>
+  </div>
+
+  <h2>How to install on Android</h2>
+  <ol>
+    <li>Open this page on your phone and tap <b>Download for Android</b>.</li>
+    <li>When the download finishes, tap the file <b>flowline.apk</b> (or find it in <b>Files → Downloads</b>).</li>
+    <li>If Android says apps from this source aren't allowed, tap <b>Settings</b>, switch on <b>Allow from this source</b>, then go back.</li>
+    <li>Tap <b>Install</b>, then <b>Open</b>. Turn the phone sideways and tap <b>DRIVE</b>.</li>
+  </ol>
+  <p class="small">New test versions install over the old one; your best score is kept.</p>
+
+  <div class="shot"><img src="img/shot-nearmiss.png" alt="A near miss at 194 km/h with the Flow meter filling"></div>
+
+  <footer>
+    <p>FLOWLINE collects no personal data. See the <a href="privacy.html">privacy policy</a>. Contact: <a href="mailto:elishakov.studio@gmail.com">elishakov.studio@gmail.com</a></p>
+    <p>Sky, road, grass and tree assets: <a href="https://polyhaven.com">Poly Haven</a> and <a href="https://ambientcg.com">ambientCG</a> (CC0). Font: Barlow (SIL Open Font License).</p>
+  </footer>
+</main>
+</body>
+</html>

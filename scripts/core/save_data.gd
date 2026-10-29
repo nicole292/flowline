@@ -5,6 +5,7 @@ extends RefCounted
 ## kill mid-write can never leave a corrupted save behind.
 
 const VERSION := 1
+const STARTER := "vanta"
 
 var path := "user://save.json"
 var best_score := 0
@@ -13,8 +14,8 @@ var cash := 0
 var total_distance := 0.0
 var total_near_misses := 0
 var runs := 0
-var selected_car := "kestrel"
-var owned_cars: Array[String] = ["kestrel"]
+var selected_car := STARTER
+var owned_cars: Array[String] = [STARTER]
 var settings := {"music": 0.8, "sfx": 1.0, "engine": 1.0, "steer_sensitivity": 1.0}
 
 
@@ -33,14 +34,14 @@ func from_dict(d: Dictionary) -> void:
 	total_distance = float(d.get("total_distance", 0.0))
 	total_near_misses = int(d.get("total_near_misses", 0))
 	runs = int(d.get("runs", 0))
-	selected_car = str(d.get("selected_car", "kestrel"))
+	selected_car = str(d.get("selected_car", STARTER))
 	owned_cars.clear()
-	for c in d.get("owned_cars", ["kestrel"]):
+	for c in d.get("owned_cars", [STARTER]):
 		owned_cars.append(str(c))
-	if not owned_cars.has("kestrel"):
-		owned_cars.append("kestrel")
+	if not owned_cars.has(STARTER):
+		owned_cars.append(STARTER)
 	if not owned_cars.has(selected_car):
-		selected_car = "kestrel"
+		selected_car = STARTER
 	var s: Variant = d.get("settings", {})
 	if s is Dictionary:
 		for k in settings:

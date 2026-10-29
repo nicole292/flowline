@@ -18,7 +18,8 @@ void fragment() {
 	float travel = fract(r * 1.6 - time_s * (2.2 + pick * 1.5) - pick * 7.0);
 	float streak = step(0.9, pick) * smoothstep(0.0, 0.25, travel) * (1.0 - smoothstep(0.55, 0.8, travel));
 	float edge = smoothstep(0.42, 0.8, r);
-	float a = streak * edge * speed * 0.22;
+	float low = smoothstep(0.42, 0.62, SCREEN_UV.y);
+	float a = streak * edge * low * speed * 0.2;
 	float glow = smoothstep(0.5, 1.0, r) * flow * (0.5 + 0.08 * sin(time_s * 5.0));
 	vec3 col = mix(vec3(1.0), flow_color, clamp(glow * 3.0, 0.0, 1.0));
 	COLOR = vec4(col, clamp(a + glow * 0.55, 0.0, 1.0));

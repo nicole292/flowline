@@ -15,15 +15,15 @@ func _fresh() -> SaveData:
 func test_roundtrip() -> void:
 	var s := _fresh()
 	s.record_run(5000, 2400.0, 7, 130)
-	s.owned_cars.append("vanta")
-	s.selected_car = "vanta"
+	s.owned_cars.append("brute")
+	s.selected_car = "brute"
 	s.settings["sfx"] = 0.4
 	t.check(s.save_to_disk(), "saved")
 	var l := SaveData.new()
 	l.path = PATH
 	t.check(l.load_from_disk(), "loaded")
 	t.check(l.best_score == 5000 and l.cash == 130 and l.runs == 1, "values survive")
-	t.check(l.selected_car == "vanta" and l.owned_cars.has("vanta"), "cars survive")
+	t.check(l.selected_car == "brute" and l.owned_cars.has("brute"), "cars survive")
 	t.near(l.settings["sfx"], 0.4, 0.0001, "settings survive")
 	t.check(l.save_to_disk(), "can overwrite existing save")
 
@@ -34,15 +34,15 @@ func test_corrupt_file_is_ignored() -> void:
 	f.store_string("{not json")
 	f.close()
 	t.check(not s.load_from_disk(), "corrupt save rejected")
-	t.check(s.best_score == 0 and s.selected_car == "kestrel", "defaults kept")
+	t.check(s.best_score == 0 and s.selected_car == SaveData.STARTER, "defaults kept")
 
 
 func test_sanitises_bad_values() -> void:
 	var s := _fresh()
-	s.from_dict({"cash": -500, "selected_car": "solstice", "owned_cars": ["vanta"]})
+	s.from_dict({"cash": -500, "selected_car": "solstice", "owned_cars": ["brute"]})
 	t.check(s.cash == 0, "negative cash clamped")
-	t.check(s.owned_cars.has("kestrel"), "starter car always owned")
-	t.check(s.selected_car == "kestrel", "cannot select a car you don't own")
+	t.check(s.owned_cars.has(SaveData.STARTER), "starter car always owned")
+	t.check(s.selected_car == SaveData.STARTER, "cannot select a car you don't own")
 
 
 func test_best_score_logic() -> void:
