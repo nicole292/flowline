@@ -54,7 +54,7 @@ Rejected options: Unity (needs an interactive account login and licence, and a m
 
 ## Commands
 
-Godot lives at `C:\dev\godot\Godot_v4.7.2-stable_win64.exe` (open `C:\devlowline\project.godot` with it and press F5 to play).
+Godot lives at `C:\dev\godot\Godot_v4.7.2-stable_win64.exe` (open `C:\dev\flowline\project.godot` with it and press F5 to play).
 
 ```
 G=/c/dev/godot/Godot_v4.7.2-stable_win64_console.exe
