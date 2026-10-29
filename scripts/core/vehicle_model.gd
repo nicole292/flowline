@@ -1,0 +1,68 @@
+class_name VehicleModel
+extends RefCounted
+## Arcade driving model for a straight highway.
+##
+## Longitudinal: engine force that fades towards top speed, brakes, drag.
+## Lateral: steering sets a target sideways velocity; the car reaches it
+## through a response rate and a grip limit, which is what gives lane changes
+## weight. Visual yaw/roll/pitch are derived from these values by the view.
+
+var top_speed := 62.0       ## m/s
+var accel := 8.0            ## m/s² from low speed
+var brake_decel := 13.0     ## m/s²
+var lat_max := 7.0          ## m/s sideways at full lock
+var steer_response := 5.0   ## 1/s, how fast lateral velocity follows input
+var lat_grip := 15.0        ## m/s², max change of lateral velocity
+var min_speed := 11.0       ## the car never fully stops on the highway
+
+var speed := 20.0
+var x := 0.0
+var lat_vel := 0.0
+var long_accel := 0.0
+var lat_accel := 0.0
+var steer_input := 0.0      ## smoothed steering actually applied
+
+
+func configure(stats: Dictionary) -> void:
+	for key in stats:
+		set(key, stats[key])
+
+
+func step(dt: float, throttle: float, brake: float, steer: float) -> void:
+	var prev_speed := speed
+	var a: float
+	if brake > 0.0:
+		a = -brake_decel * brake
+	else:
+		var r := speed / top_speed
+		var drive := accel * (1.0 - r * r) * throttle
+		var drag := (0.35 + 0.00025 * speed * speed) * (1.0 - throttle)
+		a = drive - drag
+	speed = clampf(speed + a * dt, min_speed, top_speed)
+	long_accel = (speed - prev_speed) / dt
+
+	# Digital buttons ramp in over ~0.12 s so taps feel deliberate, not twitchy.
+	steer_input = move_toward(steer_input, clampf(steer, -1.0, 1.0), dt * 8.0)
+	var speed_factor := clampf(speed / 24.0, 0.35, 1.0)
+	var target := steer_input * lat_max * speed_factor
+	var dv := (target - lat_vel) * (1.0 - exp(-steer_response * dt))
+	dv = clampf(dv, -lat_grip * dt, lat_grip * dt)
+	lat_vel += dv
+	lat_accel = dv / dt
+	x += lat_vel * dt
+
+
+## Keeps the car between the barriers. Returns impact speed (m/s) if it hit.
+func constrain(limit: float) -> float:
+	if absf(x) <= limit:
+		return 0.0
+	var impact := absf(lat_vel)
+	x = clampf(x, -limit, limit)
+	lat_vel = -lat_vel * 0.25
+	speed = maxf(min_speed, speed - impact * 1.2)
+	return impact
+
+
+## Visual heading of the car in radians (positive = towards +x).
+func heading() -> float:
+	return atan2(lat_vel, maxf(speed, 1.0))
