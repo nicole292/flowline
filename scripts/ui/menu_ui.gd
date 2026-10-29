@@ -728,6 +728,7 @@ func _build_settings() -> Control:
 	panel.add_child(grid)
 	_slider_row(grid, "Sound effects", "sfx")
 	_slider_row(grid, "Engine sound", "engine")
+	_choice_row(grid, "Crashes", "crashes", [["KEEP DRIVING", "keep"], ["END THE RUN", "end"]])
 	_choice_row(grid, "Steering", "controls", [["BUTTONS", "buttons"], ["TILT", "tilt"]])
 	_slider_row(grid, "Steering sensitivity", "steer_sensitivity", 0.5, 1.5)
 	_choice_row(grid, "Camera", "camera", [["CLOSE", "near"], ["FAR", "far"]])

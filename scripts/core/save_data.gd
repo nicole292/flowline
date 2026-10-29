@@ -32,7 +32,7 @@ var daily_streak := 0
 var last_mode := "endless"
 var last_env := "day"
 var settings := {"music": 0.8, "sfx": 1.0, "engine": 1.0, "steer_sensitivity": 1.0,
-		"controls": "buttons", "camera": "near", "quality": "high", "units": "kmh"}
+		"controls": "buttons", "camera": "near", "quality": "high", "units": "kmh", "crashes": "keep"}
 
 
 func to_dict() -> Dictionary:

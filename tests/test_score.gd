@@ -83,3 +83,18 @@ func test_cash() -> void:
 	s.score = 4000.0
 	s.near_misses = 5
 	t.check(s.cash_earned() == 110, "cash formula")
+
+
+func test_crash_costs_points_but_never_below_zero() -> void:
+	var s := ScoreModel.new()
+	s.score = 5000.0
+	for i in 6:
+		s.on_pass(0.2, 40.0)
+	var before := s.score
+	var p := s.on_crash(30.0)
+	t.check(p > 0 and is_equal_approx(s.score, before - p), "crash costs points")
+	t.check(not s.flow_active and s.flow == 0.0 and s.streak == 0, "crash ends Flow and streak")
+	t.check(s.crashes == 1, "crash counted")
+	var small := ScoreModel.new()
+	small.score = 100.0
+	t.check(small.on_crash(50.0) == 100 and small.score == 0.0, "penalty never takes the score negative")

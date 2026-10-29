@@ -5,6 +5,7 @@ extends Control
 ## The car accelerates on its own.
 
 signal menu_pressed
+signal end_pressed
 signal pause_pressed
 signal resume_pressed
 signal restart_pressed
@@ -140,6 +141,7 @@ func _build() -> void:
 	# Pause overlay
 	_pause_panel = _make_center_panel("PAUSED", [
 		["RESUME", true, func(): resume_pressed.emit()],
+		["END RUN", false, func(): end_pressed.emit()],
 		["RESTART", false, func(): restart_pressed.emit()],
 		["MENU", false, func(): menu_pressed.emit()]])
 	# Results overlay

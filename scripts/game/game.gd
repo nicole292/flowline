@@ -56,6 +56,8 @@ var _time_left := 0.0
 var _next_cp := CHECKPOINT_M
 var _checkpoints := 0
 var _tilt := 0.0
+var _invuln := 0.0                       # ghost time after a crash you drive through
+var _wrecks: Array[Dictionary] = []      # cars knocked aside, animated, no collisions
 
 # dev harness
 var _args := {}
@@ -123,6 +125,10 @@ func _ready() -> void:
 	hud.resume_pressed.connect(func(): audio.click(); set_paused(false))
 	hud.restart_pressed.connect(func(): audio.click(); restart())
 	hud.menu_pressed.connect(func(): audio.click(); _quit_to_menu())
+	hud.end_pressed.connect(func():
+		audio.click()
+		set_paused(false)
+		_finish_run("RUN ENDED"))
 	menu = MenuUI.new()
 	menu.skip_daily = _args.has("no-daily")
 	layer.add_child(menu)
@@ -362,6 +368,11 @@ func _release_view(type_index: int, v: CarVisual) -> void:
 
 
 func _clear_traffic() -> void:
+	for w in _wrecks:
+		_release_view(w["type"], w["view"])
+	_wrecks.clear()
+	_invuln = 0.0
+	player_view.visible = true
 	for o in _oncoming:
 		_release_view(o["type"], o["view"])
 	_oncoming.clear()
@@ -535,12 +546,21 @@ func _drive(dt: float) -> void:
 				audio.flow_started()
 				_vibrate(60)
 
-	var hit := sim.collide(model.x, player_z, player_view.length, player_view.width)
+	var hit: TrafficSim.Agent = null
+	_invuln = maxf(0.0, _invuln - dt)
+	if _invuln <= 0.0:
+		hit = sim.collide(model.x, player_z, player_view.length, player_view.width)
 	_update_player_view(dt, inp[1])
+	# Blink while the car is a ghost after a crash.
+	player_view.visible = _invuln <= 0.0 or fmod(_invuln, 0.2) > 0.07
 	_sync_traffic(dt)
 	_update_oncoming(dt)
+	_update_wrecks(dt)
 	if hit:
-		_begin_crash(hit)
+		if save.settings.get("crashes", "keep") == "end":
+			_begin_crash(hit)
+		else:
+			_bump(hit)
 	_maybe_rebase()
 	world.update(player_z)
 	camera.follow(dt, player_root.position, model.speed, model.top_speed, model.long_accel, model.lat_vel)
@@ -585,6 +605,8 @@ func _maybe_rebase() -> void:
 	for o in _oncoming:
 		o["z"] += dz
 		(o["view"] as CarVisual).position.z = o["z"]
+	for w in _wrecks:
+		w["z"] += dz
 	for a in sim.agents:
 		var v: CarVisual = _views.get(a.id)
 		if v:
@@ -592,6 +614,57 @@ func _maybe_rebase() -> void:
 
 
 # ------------------------------------------------------------------ crash
+
+## A crash you drive through: the other car is knocked aside, you bounce
+## off and lose speed, Flow and some points, then get a short ghost window.
+func _bump(a: TrafficSim.Agent) -> void:
+	var v: CarVisual = _views.get(a.id)
+	_views.erase(a.id)
+	_prev_x.erase(a.id)
+	sim.agents.erase(a)
+	var closing := absf(model.speed - a.speed * -a.dir)
+	var dx := model.x - a.x
+	var side := signf(dx) if dx != 0.0 else 1.0
+	if v:
+		_wrecks.append({"view": v, "type": a.type_index, "x": a.x, "z": a.z, "dir": a.dir,
+				"speed": a.speed if a.dir > 0 else a.speed + minf(closing, 15.0) * 0.4,
+				"lat": -side * clampf(closing * 0.25, 2.0, 6.0), "yaw": PI if a.dir > 0 else 0.0,
+				"spin": -side * clampf(closing * 0.05, 0.6, 2.0), "t": 0.0})
+	if a.dir > 0:
+		model.speed = maxf(model.min_speed, model.speed * 0.3)
+	else:
+		model.speed = maxf(model.min_speed, minf(model.speed, a.speed * 0.75))
+	model.lat_vel = side * clampf(closing * 0.25, 2.5, 6.0)
+	var penalty := score.on_crash(closing)
+	hud.popup("CRASH", "-%d" % penalty, Color(1.0, 0.4, 0.32), true)
+	hud.set_bonus("")
+	camera.kick(clampf(closing * 0.06, 0.6, 1.4), side)
+	audio.impact()
+	_vibrate(110)
+	_flash.color = Color(1, 1, 1, 0.35)
+	_invuln = 1.6
+
+
+func _update_wrecks(dt: float) -> void:
+	_flash.color.a = maxf(0.0, _flash.color.a - dt * 2.0)
+	for i in range(_wrecks.size() - 1, -1, -1):
+		var w := _wrecks[i]
+		w["t"] += dt
+		w["speed"] = maxf(0.0, float(w["speed"]) - 8.0 * dt)
+		w["z"] += float(w["dir"]) * float(w["speed"]) * dt
+		w["lat"] = float(w["lat"]) * exp(-1.5 * dt)
+		w["x"] = clampf(float(w["x"]) + float(w["lat"]) * dt, -HighwayWorld.BARRIER_X + 1.1,
+				HighwayWorld.BARRIER_X - 1.1)
+		w["spin"] = float(w["spin"]) * exp(-1.6 * dt)
+		w["yaw"] += float(w["spin"]) * dt
+		var v: CarVisual = w["view"]
+		v.position = Vector3(w["x"], 0, w["z"])
+		v.rotation.y = w["yaw"]
+		v.set_brake(true)
+		v.animate(dt, w["speed"], 0.0, 0.0, 0.0)
+		if float(w["z"]) > player_z + HighwayWorld.BEHIND or float(w["t"]) > 12.0:
+			_release_view(w["type"], v)
+			_wrecks.remove_at(i)
 
 func _begin_crash(a: TrafficSim.Agent) -> void:
 	state = State.CRASHING
@@ -666,6 +739,7 @@ func _update_crash(dt: float) -> void:
 
 func _finish_run(reason: String) -> void:
 	Engine.time_scale = 1.0
+	player_view.visible = true
 	audio.stop_engine()
 	_fx.visible = false
 	state = State.RESULTS
@@ -687,6 +761,7 @@ func _finish_run(reason: String) -> void:
 		["Score", UiTheme.money(int(score.score))],
 		["Distance", "%.2f %s" % [score.distance / (1609.0 if mph else 1000.0), "mi" if mph else "km"]],
 		["Near misses", "%d   (best streak x%d)" % [score.near_misses, score.best_streak]],
+		["Crashes", str(score.crashes)],
 		["Top speed", "%d %s" % [int(score.top_speed * (2.237 if mph else 3.6)), "mph" if mph else "km/h"]],
 		["Cash earned", "+ $ %s" % UiTheme.money(int(rw["cash"]))],
 		["XP", "+ %s" % UiTheme.money(int(rw["xp"]))],

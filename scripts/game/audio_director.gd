@@ -138,6 +138,11 @@ func flow_started() -> void:
 	_flow.play()
 
 
+## A hit you drive through: the crunch without killing the engine.
+func impact() -> void:
+	_crash.play()
+
+
 func crash() -> void:
 	_crash.play()
 	_engine_high.stop()

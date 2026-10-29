@@ -101,6 +101,19 @@ func on_pass(gap: float, speed_ms: float) -> Dictionary:
 			"streak": streak, "flow_started": started}
 
 
+var crashes := 0
+
+
+## A crash you keep driving through: costs points (more at higher impact
+## speed, never more than you have), ends Flow and the streak.
+func on_crash(impact_speed: float) -> int:
+	crashes += 1
+	var penalty := mini(int(score), int(400.0 + 12.0 * absf(impact_speed)))
+	score -= penalty
+	on_bump()
+	return penalty
+
+
 ## Scraping a barrier or another light contact ends Flow and the streak.
 func on_bump() -> void:
 	flow = 0.0
