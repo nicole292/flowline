@@ -1,0 +1,58 @@
+# Codemagic CI (codemagic.io): builds the iPhone version without owning a Mac.
+# Same idea as Bubblop's "iOS build check": an unsigned .ipa you put on your
+# iPhone with Sideloadly (free Apple ID). Godot writes an Xcode project
+# (preset "iOS", project files only) and Xcode builds it without signing.
+
+workflows:
+  ios-check:
+    name: iOS build (unsigned .ipa for Sideloadly)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      xcode: latest
+      vars:
+        GODOT_VERSION: "4.7.2"
+    scripts:
+      - name: Install Godot and its export templates
+        script: |
+          set -e
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+          curl -sSL -o godot.zip "$base/Godot_v${GODOT_VERSION}-stable_macos.universal.zip"
+          unzip -q godot.zip
+          curl -sSL -o templates.tpz "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          unzip -q templates.tpz
+          dest="$HOME/Library/Application Support/Godot/export_templates/${GODOT_VERSION}.stable"
+          mkdir -p "$dest"
+          mv templates/* "$dest/"
+          echo "GODOT=$PWD/Godot.app/Contents/MacOS/Godot" >> $CM_ENV
+      - name: Import assets and run the tests
+        script: |
+          $GODOT --headless --path . --import || true
+          # Not blocking: one test measures speed, which varies on cloud Macs.
+          $GODOT --headless --path . -s res://tests/run_tests.gd || echo "Some tests failed (see above)"
+      - name: Export the Xcode project
+        script: |
+          mkdir -p build/ios
+          $GODOT --headless --path . --export-release "iOS" build/ios/FLOWLINE.ipa
+          test -d build/ios/FLOWLINE.xcodeproj
+      - name: Build without signing
+        working_directory: build/ios
+        script: |
+          xcodebuild -project FLOWLINE.xcodeproj -scheme FLOWLINE -configuration Release \
+            -sdk iphoneos -destination "generic/platform=iOS" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            SYMROOT="$PWD/out" build
+      - name: Package the .ipa
+        working_directory: build/ios
+        script: |
+          rm -rf ipa && mkdir -p ipa/Payload
+          cp -R out/Release-iphoneos/FLOWLINE.app ipa/Payload/
+          cd ipa && zip -qry FLOWLINE-unsigned.ipa Payload
+    artifacts:
+      - build/ios/ipa/*.ipa
+
+  # A signed TestFlight / App Store workflow can be added like Bubblop's
+  # "ios-release" once the Apple Developer account exists: it needs an App
+  # Store Connect API key integration, ios_signing with bundle_identifier
+  # com.elishakov.flowline, the real Team ID in the "iOS" preset
+  # (application/app_store_team_id), and xcode-project build-ipa.

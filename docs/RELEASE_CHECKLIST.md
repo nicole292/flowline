@@ -13,7 +13,7 @@ Bubblop's checklist; the Play Console steps are identical (see
 - [x] Privacy and download pages (`docs/privacy.html`, `docs/index.html`)
 
 ## Decide first
-- [ ] Final game name. The package id `com.flowline.game` can never change after the first upload.
+- [x] Name: FLOWLINE: Highway Racer, package id `com.elishakov.flowline`
 - [ ] Back up the signing key folder `C:\dev\flowline_keys` off this PC (USB stick or Google Drive).
       Losing it means you can never update the app.
 - [ ] Create the GitHub repo and switch on Pages, so the privacy URL works (needs your OK to make it public).

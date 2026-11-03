@@ -1,13 +1,11 @@
 # FLOWLINE store listing (draft)
 
-"FLOWLINE" and the package id `com.flowline.game` are still working titles.
-**Pick the final name before the first upload: the package id can never change afterwards.**
-If the name changes, change `package/unique_name` and `package/name` in all Android
-presets in `export_presets.cfg`, `config/name` in `project.godot`, and the texts below.
+Name: **FLOWLINE: Highway Racer** (on the home screen: FLOWLINE).
+Package id / bundle id: `com.elishakov.flowline`. It can never change once uploaded.
 
 ## Google Play: main store listing
 
-**App name** (max 30): FLOWLINE: Highway Traffic Racer
+**App name** (max 30): FLOWLINE: Highway Racer
 
 **Short description** (max 80):
 Weave through highway traffic, pass close and build Flow for double points.

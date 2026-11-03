@@ -1,4 +1,4 @@
-# FLOWLINE (working title)
+# FLOWLINE: Highway Racer
 
 Premium endless highway traffic racer for iOS and Android.
 
@@ -113,7 +113,7 @@ $G --headless --path . -s res://tests/run_tests.gd                 # tests
 $G --path . -- --autopilot --shots=5,15 --shot-prefix=C:/tmp/s --quit-at=20 --bench
 $G --path . -- --autopilot --crash-at=6 --shots=6.3,7.2 --shot-prefix=C:/tmp/c --quit-at=11   # see a wreck
 $G --headless --path . --export-debug "Android" build/flowline-debug.apk
-adb install -r build/flowline-debug.apk && adb shell am start -n com.flowline.game/com.godot.game.GodotAppLauncher
+adb install -r build/flowline-debug.apk && adb shell am start -n com.elishakov.flowline/com.godot.game.GodotAppLauncher
 python tools/audio/make_sfx.py [name ...]                           # regenerate sounds (all, or e.g. music)
 ```
 
@@ -135,7 +135,7 @@ Rebuild vehicles and preview renders:
 
 ## Known issues
 
-- Package id `com.flowline.game` and the name are placeholders until a final name is chosen.
+- Name: FLOWLINE: Highway Racer. Package id `com.elishakov.flowline` (fixed for good once uploaded to a store).
 - No app icon yet (export warns).
 - Emulator frame rate is not representative; real-phone performance is untested.
 - Screenshot harness causes a ~140 ms frame when it saves a PNG (test-only).
