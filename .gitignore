@@ -4,3 +4,9 @@
 /previews/game/
 node_modules/
 __pycache__/
+/android/build/build/
+/android/build/.gradle/
+/android/build/assetPackInstallTime/src/main/assets/
+/android/build/assetPacks/
+/android/build/assetPackInstallTime/build/
+/android/build/libs/

@@ -20,6 +20,7 @@ extends Node3D
 ##   --paint=N         garage: preview paint swatch N (with --screen=garage)
 ##   --wreck-at=M      first crash site after M metres (default 900)
 ##   --steer=MODE      buttons (arrows) | wheel | tilt (GYRO) steering
+##   --no-hud          hide all 2D UI (clean shots for store graphics)
 ##   --crash-at=S,...  force a crash into the nearest car ahead at S seconds (dents, the last one wrecks)
 
 enum State { MENU, PLAYING, PAUSED, CRASHING, RESULTS }
@@ -145,6 +146,7 @@ func _ready() -> void:
 
 	var layer := CanvasLayer.new()
 	layer.process_mode = Node.PROCESS_MODE_ALWAYS
+	layer.visible = not _args.has("no-hud")
 	add_child(layer)
 	_fx = ColorRect.new()
 	_fx.set_anchors_preset(Control.PRESET_FULL_RECT)
