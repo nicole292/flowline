@@ -49,7 +49,8 @@ func test_flow_activates_doubles_and_drains() -> void:
 	t.near(s.multiplier(), 2.0, 0.0, "x2 in flow")
 	var before := s.score
 	s.tick(1.0, 30.0)
-	t.near(s.score - before, 30.0 * ScoreModel.speed_factor(30.0) * 2.0, 0.01, "distance points doubled")
+	t.near(s.score - before, 30.0 * ScoreModel.DIST_POINTS * ScoreModel.speed_factor(30.0) * 2.0, 0.01,
+			"distance points doubled")
 	s.tick(30.0, 30.0)
 	t.check(not s.flow_active and s.flow == 0.0, "flow drains out")
 
@@ -98,3 +99,28 @@ func test_crash_costs_points_but_never_below_zero() -> void:
 	var small := ScoreModel.new()
 	small.score = 100.0
 	t.check(small.on_crash(50.0) == 100 and small.score == 0.0, "penalty never takes the score negative")
+
+
+func test_crashes_add_up_to_a_wreck() -> void:
+	var s := ScoreModel.new()
+	t.check(not s.would_wreck(10.0), "a new car survives a crash")
+	s.on_crash(10.0)
+	t.check(s.damage > 0.2 and s.damage < 0.5, "a light crash dents the car (%f)" % s.damage)
+	t.check(ScoreModel.crash_damage(40.0) > ScoreModel.crash_damage(10.0), "harder hits do more damage")
+	s.on_crash(10.0)
+	s.on_crash(10.0)
+	t.check(s.would_wreck(10.0), "the fourth light crash wrecks it")
+
+
+func test_flow_drive_repairs_the_car() -> void:
+	var s := ScoreModel.new()
+	s.on_crash(20.0)
+	var d := s.damage
+	var repaired := 0.0
+	for i in 10:
+		var r := s.on_pass(0.2, 40.0)
+		if r["flow_started"]:
+			repaired = r["repaired"]
+			break
+	t.near(repaired, ScoreModel.FLOW_REPAIR, 0.0001, "Flow Drive repairs damage")
+	t.near(s.damage, d - ScoreModel.FLOW_REPAIR, 0.0001, "damage went down")

@@ -59,7 +59,7 @@
   <div class="stack">
     <div class="phone" aria-hidden="true"></div>
     <div class="logo" style="font-size:34px">Turn your phone sideways</div>
-    <div class="tag">FLOWLINE is played in landscape. Left thumb steers, right thumb brakes.</div>
+    <div class="tag">FLOWLINE is played in landscape. Left thumb steers with the arrows, right thumb works the pedals.</div>
   </div>
 </div>
 
@@ -80,7 +80,43 @@
       status.textContent = "Loading the highway · " + Math.round(pct) + "%";
     }
 
-    async function fetchPart(name) {
+    // Parts are kept in the browser's Cache Storage under their content hash:
+    // after the first visit the game opens without downloading it again.
+    // Any failure (private mode, storage blocked) just means a normal download.
+    const STORE = "flowline-parts";
+    const wanted = new Set();
+    Object.values(PARTS).forEach((p) => p.parts.forEach((n, i) => wanted.add(n + "?" + p.hashes[i])));
+    const store = (async () => {
+      try {
+        const c = await caches.open(STORE);
+        for (const req of await c.keys()) {  // drop parts of older builds
+          const u = new URL(req.url);
+          if (!wanted.has(u.pathname.split("/").pop() + u.search)) c.delete(req);
+        }
+        return c;
+      } catch (e) { return null; }
+    })();
+
+    async function fetchPart(name, hash) {
+      const key = name + "?" + hash;
+      const c = await store;
+      if (c) {
+        try {
+          const hit = await c.match(key);
+          if (hit) {
+            const blob = await hit.blob();
+            loaded += blob.size;
+            show();
+            return blob;
+          }
+        } catch (e) {}
+      }
+      const blob = await download(name);
+      if (c) c.put(key, new Response(blob)).catch(() => {});
+      return blob;
+    }
+
+    async function download(name) {
       const res = await realFetch(name);
       if (!res.ok) throw new Error("Could not load " + name + " (" + res.status + ")");
       const reader = res.body.getReader();
@@ -99,7 +135,7 @@
     function assemble(key) {
       if (!cache[key]) {
         const spec = PARTS[key];
-        cache[key] = Promise.all(spec.parts.map(fetchPart)).then(async (blobs) => {
+        cache[key] = Promise.all(spec.parts.map((n, i) => fetchPart(n, spec.hashes[i]))).then(async (blobs) => {
           const joined = new Blob(blobs);
           const head = new Uint8Array(await joined.slice(0, 2).arrayBuffer());
           const isGzip = head[0] === 0x1f && head[1] === 0x8b;
@@ -122,6 +158,36 @@
     };
     // Start both downloads straight away.
     Object.keys(PARTS).forEach(assemble);
+  })();
+</script>
+<script>
+  // GYRO steering in the browser: the game reads gravity in screen
+  // coordinates ("x,y", x right, y up) from window.__grav each frame.
+  (function () {
+    window.__grav = "";
+    window.addEventListener("devicemotion", (e) => {
+      const a = e.accelerationIncludingGravity;
+      if (!a || a.x === null || a.y === null) return;
+      const ang = screen.orientation ? screen.orientation.angle : (window.orientation || 0);
+      let x = a.x, y = a.y;
+      if (ang === 90) { x = -a.y; y = a.x; }
+      else if (ang === 270 || ang === -90) { x = a.y; y = -a.x; }
+      else if (ang === 180) { x = -a.x; y = -a.y; }
+      window.__grav = x.toFixed(3) + "," + y.toFixed(3);
+    });
+    // iPhones only allow motion access after asking, from a tap. The game sets
+    // __wantMotion when GYRO steering is chosen; the next tap asks once.
+    // Capture phase, so the game canvas can't swallow the tap first.
+    let asked = false;
+    function ask() {
+      if (asked || !window.__wantMotion) return;
+      asked = true;
+      for (const E of [window.DeviceMotionEvent, window.DeviceOrientationEvent]) {
+        if (E && typeof E.requestPermission === "function") E.requestPermission().catch(() => {});
+      }
+    }
+    window.addEventListener("touchend", ask, { capture: true });
+    window.addEventListener("click", ask, { capture: true });
   })();
 </script>
 <script src="index.js"></script>

@@ -1,7 +1,7 @@
 """Synthesises every FLOWLINE sound effect from scratch (pure Python, no
 samples), so all audio is original and needs no licence.
 
-    python tools/audio/make_sfx.py
+    python tools/audio/make_sfx.py [name ...]   (no names = all sounds)
 
 Writes mono 16-bit 44.1 kHz WAVs to assets/audio/.
 Loops (engine_*, wind, scrape) contain a whole number of cycles and are
@@ -12,6 +12,7 @@ import math
 import os
 import random
 import struct
+import sys
 import wave
 
 RATE = 44100
@@ -19,16 +20,20 @@ TAU = 2 * math.pi
 OUT = os.path.join(os.path.dirname(__file__), "..", "..", "assets", "audio")
 
 
-def write(name, samples, gain=0.9):
+ONLY = set(sys.argv[1:])
+
+
+def write(name, samples, gain=0.9, rate=RATE):
     peak = max(1e-6, max(abs(s) for s in samples))
     k = gain / peak
     path = os.path.join(OUT, name + ".wav")
     with wave.open(path, "wb") as w:
         w.setnchannels(1)
         w.setsampwidth(2)
-        w.setframerate(RATE)
+        w.setframerate(rate)
         w.writeframes(b"".join(struct.pack("<h", int(max(-1, min(1, s * k)) * 32767)) for s in samples))
-    print("wrote", path, "%.2fs" % (len(samples) / RATE))
+    print("wrote", path, "%.2fs" % (len(samples) / rate))
+
 
 
 class OnePole:
@@ -65,39 +70,38 @@ def seam(samples, fade=0.05):
     return body
 
 
-def engine(base_hz, seconds, resonances, bright, rough, seed):
-    """Firing-pulse engine model. base_hz = firing frequency of the loop."""
+def car_engine(fire_hz, seconds, resonances, cutoff, seed, cyl=(1.0, 0.86, 0.95, 0.82)):
+    """Engine as an exhaust note: one pulse per cylinder firing, each ringing
+    through a few damped exhaust resonances (`resonances`: Hz, decay/s, gain),
+    with a fixed per-cylinder level pattern for the burble of a 4-cylinder.
+    Pulses wrap around the loop end and the filters run over the loop twice,
+    so it repeats seamlessly; fire_hz * seconds must be a multiple of 4."""
     rng = random.Random(seed)
     n = int(seconds * RATE)
     out = [0.0] * n
-    period = RATE / base_hz
-    pulses = int(round(seconds * base_hz))
-    for p in range(pulses):
-        start = int(p * period)
-        amp = 1.0 + rng.uniform(-rough, rough)
-        cyl = p % 4  # slight per-cylinder character
-        amp *= (1.0, 0.92, 1.06, 0.95)[cyl]
-        for fr, tau, g in resonances:
-            fr2 = fr * (1 + rng.uniform(-0.03, 0.03))
-            length = int(tau * 6 * RATE)
-            for i in range(length):
-                j = start + i
-                if j >= n:
-                    j -= n  # wrap so the loop stays continuous
-                t = i / RATE
-                out[j] += amp * g * math.exp(-t / tau) * math.sin(TAU * fr2 * t)
-    # body: fundamental + 2nd harmonic of the firing rate
-    for i in range(n):
+    firings = int(round(fire_hz * seconds))
+    plen = int(2.5 * RATE / fire_hz)
+    pulse = []
+    for i in range(plen):
         t = i / RATE
-        out[i] += 0.55 * math.sin(TAU * base_hz * t) + 0.25 * math.sin(TAU * base_hz * 2 * t + 0.6)
-    # intake/exhaust hiss modulated by the firing rate
-    bp = bandpass(300, 2500 * bright)
-    for i in range(n):
-        t = i / RATE
-        mod = 0.6 + 0.4 * math.sin(TAU * base_hz * t)
-        out[i] += bp(rng.uniform(-1, 1)) * 0.5 * bright * mod
-    lp = OnePole(1800 + 2600 * bright)
-    return [lp(s) for s in out]
+        pulse.append(sum(g * math.exp(-t * d) * math.sin(TAU * f * t) for f, d, g in resonances))
+    for k in range(firings):
+        s0 = int(round(k * RATE / fire_hz))
+        a = cyl[k % len(cyl)]
+        for i, v in enumerate(pulse):
+            out[(s0 + i) % n] += a * v
+    # A little low rumble (loop-periodic noise) so it isn't a pure tone.
+    noise = [rng.uniform(-1, 1) for _ in range(n)]
+    rl = OnePole(220)
+    lp = OnePole(cutoff)
+    lp2 = OnePole(cutoff)
+    res = []
+    for i in range(2 * n):
+        x = out[i % n] + 0.35 * rl(noise[i % n])
+        y = lp2(lp(x))
+        if i >= n:
+            res.append(y)
+    return res
 
 
 def noise_loop(seconds, lo, hi, seed, flutter=0.0, flutter_hz=0.0):
@@ -122,7 +126,7 @@ def whoosh():
     for i in range(n):
         t = i / dur / RATE
         # Doppler-ish sweep: rises to the pass point then falls.
-        c = 300 + 2600 * math.exp(-((t - 0.35) / 0.16) ** 2)
+        c = 250 + 1300 * math.exp(-((t - 0.35) / 0.16) ** 2)
         lp.set(c)
         y = lp(rng.uniform(-1, 1))
         y -= hp(y)
@@ -136,12 +140,13 @@ def crash():
     dur = 1.6
     n = int(dur * RATE)
     out = [0.0] * n
-    lp = OnePole(1200)
+    lp = OnePole(700)
+    lp_c = OnePole(2200)
     for i in range(n):
         t = i / RATE
-        thump = math.sin(TAU * (55 + 40 * math.exp(-t * 20)) * t) * math.exp(-t * 7) * 1.4
-        burst = lp(rng.uniform(-1, 1)) * math.exp(-t * 5.5) * 1.6
-        crunch = rng.uniform(-1, 1) * math.exp(-t * 14) * 0.6
+        thump = math.sin(TAU * (55 + 40 * math.exp(-t * 20)) * t) * math.exp(-t * 7) * 1.6
+        burst = lp(rng.uniform(-1, 1)) * math.exp(-t * 6.5) * 1.3
+        crunch = lp_c(rng.uniform(-1, 1)) * math.exp(-t * 16) * 0.5
         out[i] = thump + burst + crunch
     # metal clanks: inharmonic partials at a few impact times
     for start, scale in ((0.0, 1.0), (0.11, 0.6), (0.27, 0.4), (0.5, 0.25)):
@@ -193,6 +198,120 @@ def concat_notes(notes, gap):
     return out
 
 
+def horn(seconds=0.5):
+    """Twin electric car horn (two buzzy notes a major third apart). Every
+    partial fits a whole number of cycles in `seconds`, so it loops cleanly."""
+    n = int(seconds * RATE)
+    lp = OnePole(2600)
+    out = []
+    for i in range(2 * n):  # first pass settles the filter, second is kept
+        t = (i % n) / RATE
+        v = 0.0
+        for f, a in ((420, 1.0), (500, 0.85)):
+            ph = (f * t) % 1.0
+            saw = 2.0 * ph - 1.0
+            v += a * math.tanh(3.0 * (saw + 0.6 * math.sin(TAU * f * t)))
+        y = lp(v)
+        if i >= n:
+            out.append(y)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Background music: a mellow, looping lo-fi groove (pads, electric piano,
+# bass, soft drums). Rendered at a lower rate; it sits quietly under the game.
+# ---------------------------------------------------------------------------
+
+MRATE = 22050
+
+
+def midi_hz(m):
+    return 440.0 * 2 ** ((m - 69) / 12)
+
+
+def music():
+    rng = random.Random(21)
+    bpm = 84.0
+    beat = 60.0 / bpm
+    bar = beat * 4
+    # Two bars per chord, 4 chords, played twice (the arp varies).
+    chords = [  # (bass root, chord tones) as MIDI notes
+        (48, [60, 64, 67, 71, 74]),   # Cmaj9
+        (45, [57, 60, 64, 67, 71]),   # Am9
+        (41, [57, 60, 64, 65, 69]),   # Fmaj7 (add9 feel)
+        (43, [55, 59, 62, 65, 69]),   # G9
+    ]
+    bars = 16
+    n = int(bars * bar * MRATE)
+    out = [0.0] * n
+
+    def add(start_s, samples):  # wraps around: notes ringing past the end loop to the start
+        s0 = int(start_s * MRATE)
+        for i, v in enumerate(samples):
+            out[(s0 + i) % n] += v
+
+    def note(freq, dur, attack, release, gain, partials=((1, 1.0),), detune=0.0, decay=None):
+        m = int((dur + release) * MRATE)
+        res = []
+        for i in range(m):
+            t = i / MRATE
+            env = min(1.0, t / attack) if attack > 0 else 1.0
+            if decay:
+                env *= math.exp(-t / decay)
+            if t > dur:
+                env *= max(0.0, 1.0 - (t - dur) / release)
+            v = 0.0
+            for h, g in partials:
+                v += g * math.sin(TAU * freq * h * t)
+                if detune:
+                    v += g * 0.7 * math.sin(TAU * freq * h * (1 + detune) * t + 1.3)
+            res.append(v * env * gain)
+        return res
+
+    for b in range(0, bars, 2):
+        root, tones = chords[(b // 2) % 4]
+        t0 = b * bar
+        # Pad: soft, slowly swelling chord.
+        for m in tones[:4]:
+            add(t0, note(midi_hz(m), 2 * bar - 0.2, 0.9, 1.2, 0.09,
+                         ((1, 1.0), (2, 0.18)), detune=0.0025))
+        # Bass: root on 1 and 3, a passing fifth before the change.
+        for k, (beat_i, m) in enumerate([(0, root), (2, root), (4, root), (6, root), (7.5, root + 7)]):
+            add(t0 + beat_i * beat, note(midi_hz(m - 12 if m > 45 else m), beat * 0.9, 0.01, 0.15, 0.32,
+                                          ((1, 1.0), (2, 0.25)), decay=0.7))
+        # Electric piano: lazy eighth-note arpeggio, a different pattern on the repeat.
+        pattern = [0, 2, 4, 1, 3, 2, 4, 3] if b < 8 else [4, 2, 3, 1, 2, 0, 3, 4]
+        for e in range(16):
+            if rng.random() < 0.18:
+                continue  # leave some space
+            m = tones[pattern[e % 8]] + 12
+            swing = 0.06 * beat if e % 2 else 0.0
+            add(t0 + e * beat * 0.5 + swing,
+                note(midi_hz(m), 0.25, 0.004, 0.5, 0.11 * rng.uniform(0.7, 1.0),
+                     ((1, 1.0), (2, 0.35), (3, 0.08)), decay=0.45))
+    # Soft drums: kick on 1 and 3, rim on 2 and 4, quiet hats on the off-beats.
+    for b in range(bars):
+        t0 = b * bar
+        for k in (0, 2):
+            m = int(0.3 * MRATE)
+            add(t0 + k * beat, [math.sin(TAU * (48 + 70 * math.exp(-i / MRATE * 30)) * i / MRATE)
+                                * math.exp(-i / MRATE * 11) * 0.5 for i in range(m)])
+        for k in (1, 3):
+            hp = OnePole(1200)
+            add(t0 + k * beat, [(lambda x: x - hp(x))(rng.uniform(-1, 1)) * math.exp(-i / MRATE * 40) * 0.12
+                                for i in range(int(0.12 * MRATE))])
+        for k in range(4):
+            hp = OnePole(5000)
+            add(t0 + (k + 0.5) * beat + 0.05 * beat,
+                [(lambda x: x - hp(x))(rng.uniform(-1, 1)) * math.exp(-i / MRATE * 90) * 0.05
+                 for i in range(int(0.05 * MRATE))])
+    # Warm it up: gentle low-pass and soft saturation (two passes so the filter is settled at the seam).
+    lp = OnePole(3200)
+    for i in range(n):
+        lp(out[i])
+    return [math.tanh(lp(v) * 1.4) for v in out]
+
+
 def click():
     out = tone([1500, 3000], 0.05, 0.012, attack=0.001)
     return out
@@ -200,23 +319,36 @@ def click():
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    # Engine layers: low rumble and high, brighter rasp. Game crossfades and
-    # pitches them by RPM. Firing freq 60 Hz ~ 1800 rpm on a 4-cylinder.
-    write("engine_low", seam(engine(60, 1.05, [(160, 0.006, 1.0), (420, 0.003, 0.4)], 0.5, 0.12, 1)), 0.8)
-    write("engine_high", seam(engine(120, 1.05, [(380, 0.004, 1.0), (950, 0.002, 0.5), (1900, 0.0012, 0.25)],
-                                     1.0, 0.08, 2)), 0.8)
-    write("wind", noise_loop(2.0, 120, 1400, 3, flutter=0.25, flutter_hz=0.9), 0.7)
-    write("scrape", noise_loop(1.0, 1800, 5200, 5, flutter=0.6, flutter_hz=13), 0.7)
-    write("whoosh", whoosh(), 0.85)
-    write("crash", crash(), 0.95)
-    write("click", click(), 0.6)
-    # Near-miss chimes, brighter per tier.
-    write("near_0", tone([1320, 2640], 0.35, 0.10), 0.5)
-    write("near_1", concat_notes([([1320, 2640], 0.3, 0.09), ([1760, 3520], 0.35, 0.1)], 0.06), 0.55)
-    write("near_2", concat_notes([([1320, 2640], 0.3, 0.08), ([1760, 3520], 0.3, 0.08),
-                                  ([2217, 4434], 0.4, 0.12)], 0.055), 0.6)
-    write("flow_start", concat_notes([([523, 1046, 1569], 0.6, 0.25), ([659, 1318, 1977], 0.6, 0.25),
-                                      ([784, 1568, 2352], 0.7, 0.3), ([1046, 2092, 3138], 1.0, 0.45)], 0.09), 0.7)
+    sounds = {
+        # Engine layers: a warm low hum and a smoother high voice. The game
+        # crossfades and pitches them by RPM. 60 Hz firing ~ 1800 rpm (4-cyl).
+        # Engine layers: a deep idle/low-rev note and a tighter high-rev note.
+        # The game pitches each only within about 0.6x-1.8x and crossfades.
+        "engine_low": lambda: (car_engine(60, 1.0, [(140, 70, 1.0), (330, 140, 0.45), (720, 300, 0.12)],
+                                          900, 1), 0.8),
+        "engine_high": lambda: (car_engine(140, 1.0, [(260, 110, 1.0), (560, 200, 0.4), (1150, 380, 0.1)],
+                                           1600, 2), 0.8),
+        "wind": lambda: (noise_loop(2.0, 70, 520, 3, flutter=0.15, flutter_hz=0.5), 0.6),
+        "scrape": lambda: (noise_loop(1.0, 600, 2200, 5, flutter=0.3, flutter_hz=8), 0.55),
+        "whoosh": lambda: (whoosh(), 0.85),
+        "crash": lambda: (crash(), 0.95),
+        "click": lambda: (click(), 0.6),
+        "horn": lambda: (horn(), 0.75),
+        # Near-miss chimes, brighter per tier.
+        "near_0": lambda: (tone([1320, 2640], 0.35, 0.10), 0.5),
+        "near_1": lambda: (concat_notes([([1320, 2640], 0.3, 0.09), ([1760, 3520], 0.35, 0.1)], 0.06), 0.55),
+        "near_2": lambda: (concat_notes([([1320, 2640], 0.3, 0.08), ([1760, 3520], 0.3, 0.08),
+                                         ([2217, 4434], 0.4, 0.12)], 0.055), 0.6),
+        "flow_start": lambda: (concat_notes([([523, 1046, 1569], 0.6, 0.25), ([659, 1318, 1977], 0.6, 0.25),
+                                             ([784, 1568, 2352], 0.7, 0.3), ([1046, 2092, 3138], 1.0, 0.45)],
+                                            0.09), 0.7),
+    }
+    for name, make in sounds.items():
+        if not ONLY or name in ONLY:
+            samples, gain = make()
+            write(name, samples, gain)
+    if not ONLY or "music" in ONLY:
+        write("music", music(), 0.8, rate=MRATE)
 
 
 main()

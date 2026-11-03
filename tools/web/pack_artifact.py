@@ -7,6 +7,7 @@ Artifact files must be <= 15 MB each, so the engine (.wasm) and game data
 joins and un-gzips them in the browser, and hands Godot normal responses.
 """
 import gzip
+import hashlib
 import json
 import os
 import shutil
@@ -23,14 +24,17 @@ for f in os.listdir(DST):
 def pack(src_name, prefix, ctype):
     raw = open(os.path.join(SRC, src_name), "rb").read()
     gz = gzip.compress(raw, 9)
-    parts = []
+    parts, hashes = [], []
     for i in range(0, len(gz), PART):
         name = "%s%d.wasm" % (prefix, i // PART)
         with open(os.path.join(DST, name), "wb") as f:
             f.write(gz[i:i + PART])
         parts.append(name)
+        # Content hash: the page caches parts on the device under it, so an
+        # unchanged part is never downloaded twice, and a new build is.
+        hashes.append(hashlib.sha1(gz[i:i + PART]).hexdigest()[:16])
     print(src_name, len(raw), "->", len(gz), parts)
-    return {"parts": parts, "type": ctype, "size": len(raw), "packed": len(gz)}
+    return {"parts": parts, "hashes": hashes, "type": ctype, "size": len(raw), "packed": len(gz)}
 
 
 spec = {
@@ -42,7 +46,7 @@ for f in ("index.js", "index.audio.worklet.js", "index.audio.position.worklet.js
 shutil.copy(os.path.join(SRC, "index.apple-touch-icon.png"), os.path.join(DST, "icon.png"))
 
 godot_cfg = {"args": [], "canvasResizePolicy": 2, "emscriptenPoolSize": 8,
-             "ensureCrossOriginIsolationHeaders": False, "executable": "index", "experimentalVK": False,
+             "ensureCrossOriginIsolationHeaders": False, "executable": "index", "experimentalVK": True,  # phone keyboard for text fields
              "fileSizes": {"index.pck": spec["index.pck"]["size"], "index.wasm": spec["index.wasm"]["size"]},
              "focusCanvas": True, "gdextensionLibs": [], "godotPoolSize": 4}
 total_mb = (spec["index.pck"]["packed"] + spec["index.wasm"]["packed"]) / 1e6

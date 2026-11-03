@@ -85,7 +85,10 @@ void fragment() {
 		EMISSION = col * pool * lamps * vec3(1.0, 0.72, 0.42) * 4.5;
 	}
 	NORMAL_MAP = texture(normal_tex, uv).rgb;
-	NORMAL_MAP_DEPTH = mix(1.0, 0.3, paint);
-	ROUGHNESS = mix(mix(rough, 0.55, paint), 0.1, wetness);
-	SPECULAR = 0.45;
+	// Grain detail fades out with distance: far away (and at grazing angles)
+	// a full-strength normal map turns into sparkling noise.
+	float near_detail = 1.0 - smoothstep(0.02, 0.12, length(fwidth(uv)));
+	NORMAL_MAP_DEPTH = mix(0.15, 0.7, near_detail) * mix(1.0, 0.3, paint);
+	ROUGHNESS = mix(mix(max(rough, 0.78), 0.6, paint), 0.1, wetness);
+	SPECULAR = 0.35;
 }

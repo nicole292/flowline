@@ -4,6 +4,9 @@ extends RefCounted
 ##
 ## Flow: near misses fill the meter. When full, Flow Drive doubles every
 ## point until the meter drains or the player bumps into something.
+##
+## Damage: every crash dents the car (harder hits more). At 100% the car is
+## wrecked and the run is over. Starting a Flow Drive repairs some of it.
 
 const NEAR_GAP := 1.25         ## metres of side clearance that still counts
 const TIER_GAPS := [0.35, 0.75] ## below these: INSANE, CLOSE; else NEAR
@@ -15,6 +18,8 @@ const FLOW_GRACE := 4.0        ## seconds after a near miss before decay
 const FLOW_DECAY := 0.03       ## per second while building
 const FLOW_DRAIN := 0.085      ## per second during Flow Drive
 const OVERTAKE_POINTS := 20
+const DIST_POINTS := 0.5       ## points per metre before the speed bonus
+const FLOW_REPAIR := 0.25      ## damage repaired each time Flow Drive starts
 
 var score := 0.0
 var distance := 0.0
@@ -32,6 +37,7 @@ var _grace := 0.0
 ## Extra multiplier from where you drive (x2 in the oncoming lanes in Two-Way).
 var lane_bonus := 1.0
 var oncoming_distance := 0.0
+var damage := 0.0              ## 0..1, 1 = wrecked
 
 
 func multiplier() -> float:
@@ -48,7 +54,7 @@ func tick(dt: float, speed_ms: float) -> void:
 	var d := speed_ms * dt
 	distance += d
 	top_speed = maxf(top_speed, speed_ms)
-	score += d * speed_factor(speed_ms) * multiplier()
+	score += d * DIST_POINTS * speed_factor(speed_ms) * multiplier()
 	if lane_bonus > 1.0:
 		oncoming_distance += d
 	streak_timer = maxf(0.0, streak_timer - dt)
@@ -97,17 +103,33 @@ func on_pass(gap: float, speed_ms: float) -> Dictionary:
 		flow_active = true
 		flow_activations += 1
 		started = true
+	var repaired := 0.0
+	if started:
+		repaired = minf(damage, FLOW_REPAIR)
+		damage -= repaired
 	return {"tier": tier, "name": TIER_NAMES[tier], "points": pts,
-			"streak": streak, "flow_started": started}
+			"streak": streak, "flow_started": started, "repaired": repaired}
 
 
 var crashes := 0
 
 
+## Damage from one crash at this closing speed (m/s): a light tap is about
+## a quarter of the car, a head-on in Two-Way most of it.
+static func crash_damage(impact_speed: float) -> float:
+	return clampf(0.2 + 0.01 * absf(impact_speed), 0.25, 0.65)
+
+
+## True if a crash at this closing speed would wreck the car.
+func would_wreck(impact_speed: float) -> bool:
+	return damage + crash_damage(impact_speed) >= 0.999
+
+
 ## A crash you keep driving through: costs points (more at higher impact
-## speed, never more than you have), ends Flow and the streak.
+## speed, never more than you have), damages the car, ends Flow and the streak.
 func on_crash(impact_speed: float) -> int:
 	crashes += 1
+	damage = minf(1.0, damage + crash_damage(impact_speed))
 	var penalty := mini(int(score), int(400.0 + 12.0 * absf(impact_speed)))
 	score -= penalty
 	on_bump()

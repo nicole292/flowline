@@ -8,6 +8,9 @@ extends RefCounted
 ##    camera, never right in front of the player;
 ##  * a spawn is rejected if it would leave no open lane in its window;
 ##  * cars never cut in front of a nearby player.
+##
+## Crash sites: every so often a wreck (or two) sits stopped in a lane far
+## ahead. It always leaves an open lane; traffic signals and goes around it.
 
 class Agent:
 	extends RefCounted
@@ -27,6 +30,9 @@ class Agent:
 	var braking := false
 	var ahead_of_player := true
 	var dir := -1               ## -1 travels with the player (-z), +1 oncoming
+	var wreck := false          ## a stopped, crashed car to drive around
+	var yaw := 0.0              ## how far a wreck is slewed across its lane (radians)
+	var police := false         ## the patrol car parked behind a crash, lights flashing
 
 	func occupies(l: int) -> bool:
 		return lane == l or target_lane == l
@@ -54,12 +60,22 @@ var lane_change_rate := 0.05   ## chance per second per car
 var density_start := 14
 var density_max := 28
 var density_ramp := 9000.0     ## metres to reach max density
+## Crash sites: distance (m) to the first one and the spacing after that.
+var crash_sites := true
+var crash_first := 900.0
+var crash_spacing := Vector2(900.0, 1700.0)
+## Traffic types that can be a wreck (indices into types); empty = any.
+var wreck_types: Array[int] = []
+## Type index of the police car that guards most crash sites (-1 = none).
+var police_type := -1
 ## Each type: {length, width, weight, speed_mul}
 var types: Array[Dictionary] = [{"length": 4.5, "width": 1.9, "weight": 1.0, "speed_mul": 1.0}]
 
 var agents: Array[Agent] = []
 var rng := RandomNumberGenerator.new()
 var _next_id := 1
+var _next_crash := -1.0
+var _wrecks: Array[Agent] = []   # this frame's wrecks, so lane checks don't scan all traffic
 
 
 func lane_x(lane: int) -> float:
@@ -113,9 +129,12 @@ func pick_type() -> int:
 	var r := rng.randf() * total
 	for i in types.size():
 		r -= float(types[i]["weight"])
-		if r <= 0.0:
+		if r <= 0.0 and float(types[i]["weight"]) > 0.0:
 			return i
-	return types.size() - 1
+	for i in range(types.size() - 1, -1, -1):  # rounding left a sliver: last real type
+		if float(types[i]["weight"]) > 0.0:
+			return i
+	return 0
 
 
 func spawn(lane: int, z: float, type_index: int) -> Agent:
@@ -177,6 +196,11 @@ func update(dt: float, player_z: float, player_x: float, player_speed: float,
 		if can_spawn(lane, z):
 			spawned.append(spawn(lane, z, pick_type()))
 
+	spawned.append_array(_maybe_crash_site(player_z, distance))
+	_wrecks.clear()
+	for a in agents:
+		if a.wreck:
+			_wrecks.append(a)
 	_drive(dt, player_z, player_x, player_speed, player_len, player_w)
 
 	var passes: Array[Dictionary] = []
@@ -189,8 +213,73 @@ func update(dt: float, player_z: float, player_x: float, player_speed: float,
 	return {"spawned": spawned, "despawned": despawned, "passes": passes}
 
 
+## Places a crash site far ahead once the run has gone far enough. One wreck,
+## sometimes a second one slewed the other way just behind it; it only goes
+## where at least one lane stays open.
+func _maybe_crash_site(player_z: float, distance: float) -> Array[Agent]:
+	var made: Array[Agent] = []
+	if not crash_sites:
+		return made
+	if _next_crash < 0.0:
+		_next_crash = crash_first
+	if distance < _next_crash:
+		return made
+	var lanes_ok: Array[int] = []
+	for l in lanes:
+		if lane_dir[l] < 0:
+			lanes_ok.append(l)
+	var z := player_z - spawn_ahead_max + 20.0
+	for attempt in 4:
+		var lane: int = lanes_ok[rng.randi_range(0, lanes_ok.size() - 1)]
+		if not lane_free(lane, z, 30.0) or blocked_lanes(z, 30.0, lane) >= lanes:
+			continue
+		var side := 1.0 if rng.randf() < 0.5 else -1.0
+		made.append(spawn_wreck(lane, z, side * rng.randf_range(0.25, 0.45)))
+		if rng.randf() < 0.45 and lane_free(lane, z + 7.0, 3.0):
+			made.append(spawn_wreck(lane, z + 7.0, -side * rng.randf_range(0.5, 0.8)))
+		# The first patrol car on the scene parks behind it, slightly angled.
+		if police_type >= 0 and rng.randf() < 0.75 and lane_free(lane, z + 18.0, 4.0):
+			var p := spawn_wreck(lane, z + 18.0, side * 0.08, police_type)
+			p.police = true
+		# Placed: the next one comes later. Otherwise try again next frame.
+		_next_crash = distance + rng.randf_range(crash_spacing.x, crash_spacing.y)
+		break
+	return made
+
+
+func spawn_wreck(lane: int, z: float, yaw: float, type_index := -1) -> Agent:
+	var ti := type_index
+	if ti < 0:
+		ti = pick_type() if wreck_types.is_empty() else wreck_types[rng.randi_range(0, wreck_types.size() - 1)]
+	var a := spawn(lane, z, ti)
+	a.wreck = true
+	a.yaw = yaw
+	a.speed = 0.0
+	a.desired_speed = 0.0
+	a.dir = -1
+	# Footprint of the car turned across the lane.
+	var l := a.length
+	var w := a.width
+	a.width = absf(l * sin(yaw)) + absf(w * cos(yaw))
+	a.length = absf(l * cos(yaw)) + absf(w * sin(yaw))
+	return a
+
+
+## A wreck in `lane` within `reach` metres ahead of z (for traffic going -z).
+func wreck_ahead(lane: int, z: float, reach: float) -> bool:
+	for b in _wrecks:
+		if b.lane == lane and z - b.z > 0.0 and z - b.z < reach:
+			return true
+	return false
+
+
 func _drive(dt: float, pz: float, px: float, pspeed: float, plen: float, pw: float) -> void:
 	for a in agents:
+		if a.wreck:
+			continue
+		# Coming up on a wreck: get out of its lane now, not at random.
+		if not a.changing() and a.dir < 0 and wreck_ahead(a.lane, a.z, 160.0):
+			_try_lane_change(a, pz, px, 0.5)
 		# Lane change state machine: signal first, then move over smoothly.
 		if a.changing():
 			if a.signal_time > 0.0:
@@ -219,6 +308,9 @@ func _drive(dt: float, pz: float, px: float, pspeed: float, plen: float, pw: flo
 			if not (b.occupies(a.lane) or b.occupies(a.target_lane)):
 				continue
 			var g := ahead - (a.length + b.length) * 0.5
+			# Already moving out of a wreck's lane with room to spare: don't stop for it.
+			if b.wreck and a.changing() and b.lane != a.target_lane and g > 12.0:
+				continue
 			if g < leader_gap:
 				leader_gap = g
 				leader_speed = b.speed
@@ -246,13 +338,13 @@ func _drive(dt: float, pz: float, px: float, pspeed: float, plen: float, pw: flo
 				a.speed = minf(a.speed, leader_speed)
 
 
-func _try_lane_change(a: Agent, pz: float, px: float) -> void:
+func _try_lane_change(a: Agent, pz: float, px: float, signal_s := 1.3) -> void:
 	var options: Array[int] = []
 	for d in [-1, 1]:
 		var l: int = a.lane + d
 		if l < 0 or l >= lanes or lane_dir[l] != a.dir:
 			continue
-		if not lane_free(l, a.z, a.length + 10.0, a):
+		if not lane_free(l, a.z, a.length + 10.0, a) or wreck_ahead(l, a.z, 120.0):
 			continue
 		# Never cut in front of a player who is close behind in that lane.
 		var player_lane := lane_of_x(px)
@@ -263,7 +355,34 @@ func _try_lane_change(a: Agent, pz: float, px: float) -> void:
 		return
 	a.target_lane = options[rng.randi_range(0, options.size() - 1)]
 	a.lane_t = 0.0
-	a.signal_time = 1.3
+	a.signal_time = signal_s
+
+
+## Horn: the nearest car ahead in the player's lane signals briefly and
+## moves over (preferring the slower lane) if a neighbouring lane is clear.
+## Returns that car, or null when nobody can make room.
+func honk(px: float, pz: float, reach := 90.0) -> Agent:
+	var lane := lane_of_x(px)
+	var best: Agent = null
+	for a in agents:
+		if a.dir > 0 or a.wreck or a.changing() or a.lane != lane:
+			continue
+		var ahead := pz - a.z
+		if ahead > 0.0 and ahead < reach and (best == null or a.z > best.z):
+			best = a
+	if best == null:
+		return null
+	var options: Array[int] = []
+	for d in [-1, 1]:
+		var l: int = best.lane + d
+		if l >= 0 and l < lanes and lane_dir[l] == best.dir and lane_free(l, best.z, best.length + 8.0, best):
+			options.append(l)
+	if options.is_empty():
+		return null
+	best.target_lane = options.max()
+	best.lane_t = 0.0
+	best.signal_time = 0.45
+	return best
 
 
 ## Returns the first agent overlapping the player's footprint, or null.
@@ -283,3 +402,5 @@ func shift(dz: float) -> void:
 
 func clear() -> void:
 	agents.clear()
+	_wrecks.clear()
+	_next_crash = -1.0

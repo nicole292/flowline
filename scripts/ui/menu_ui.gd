@@ -11,11 +11,13 @@ signal settings_changed
 signal clicked
 
 const MODES := [
-	{"id": "endless", "name": "ENDLESS", "desc": "A one-way highway. Survive as long as you can and chase a high score."},
-	{"id": "twoway", "name": "TWO-WAY", "desc": "Two lanes come straight at you. Drive against traffic for double points and +35% cash."},
-	{"id": "time", "name": "TIME TRIAL", "desc": "Race the clock. Every checkpoint adds time. How far can you get?"},
+	{"id": "endless", "name": "ENDLESS", "desc": "One-way traffic. Go as far as you can."},
+	{"id": "twoway", "name": "TWO-WAY", "desc": "Drive into oncoming traffic for double points."},
+	{"id": "time", "name": "TIME TRIAL", "desc": "Beat the clock to each checkpoint."},
 ]
-const ENVS := [["day", "DAYTIME", 1], ["sunset", "GOLDEN HOUR", 3], ["night", "NIGHT", 5]]
+const ENVS := [["day", "DAY", 1], ["sunset", "SUNSET", 3], ["night", "NIGHT", 5]]
+const CONTROL_W := 340.0   ## width of the control column in settings rows
+const SCROLL_PAD := 18     ## room around scrolled cards for their shadows
 
 var save: SaveData
 var _screens := {}
@@ -24,6 +26,7 @@ var _margin := 28.0
 
 var _top: HBoxContainer
 var _back: Button
+var _title_pill: PanelContainer
 var _title: Label
 var _cash: Label
 var _level: Label
@@ -35,6 +38,7 @@ var _mode := "endless"
 var _env := "day"
 var _mode_cards := {}
 var _env_chips := {}
+var _steer_chips := {}
 var _mode_best := {}
 var _go: Button
 
@@ -47,16 +51,36 @@ var _pending_rim := -1
 var _missions_box: VBoxContainer
 var _daily_box: VBoxContainer
 var _settings_rows := {}
+var _choice_chips := {}     # setting key -> {value: chip}
 var _home_best: Label
 
 
 func setup(data: SaveData) -> void:
 	save = data
-	theme = UiTheme.make()
 	set_anchors_preset(Control.PRESET_TOP_LEFT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_mode = save.last_mode
 	_env = save.last_env
+	_build_all()
+	get_viewport().size_changed.connect(_layout)
+	_layout()
+	show_screen("home")
+
+
+## The player's light/dark choice; until they make one, whatever the phone
+## uses (dark when the device can't tell us).
+func _theme_choice() -> String:
+	var t := str(save.settings.get("theme", ""))
+	if t == "light" or t == "dark":
+		return t
+	if DisplayServer.is_dark_mode_supported() and not DisplayServer.is_dark_mode():
+		return "light"
+	return "dark"
+
+
+func _build_all() -> void:
+	UiTheme.apply(_theme_choice())
+	theme = UiTheme.make()
 	_build_top_bar()
 	_screens["home"] = _build_home()
 	_screens["modes"] = _build_modes()
@@ -74,9 +98,19 @@ func setup(data: SaveData) -> void:
 	_toast.add_theme_constant_override("outline_size", 8)
 	add_child(_toast)
 	_toast.modulate.a = 0.0
-	get_viewport().size_changed.connect(_layout)
+
+
+## Tears the menus down and builds them again in the newly chosen mode.
+func _restyle() -> void:
+	for c in get_children():
+		remove_child(c)
+		c.queue_free()
+	for d in [_screens, _mode_cards, _env_chips, _steer_chips, _mode_best, _g, _settings_rows, _choice_chips]:
+		d.clear()
+	_daily_popup = null
+	_build_all()
 	_layout()
-	show_screen("home")
+	show_screen("settings")
 
 
 # ------------------------------------------------------------------ helpers
@@ -123,7 +157,7 @@ func _screen() -> Control:
 	return c
 
 
-func toast(text: String, color := UiTheme.AMBER) -> void:
+func toast(text: String, color := UiTheme.ACCENT) -> void:
 	_toast.text = text
 	_toast.add_theme_color_override("font_color", color)
 	_toast.modulate.a = 1.0
@@ -148,12 +182,22 @@ func _safe_rect() -> Rect2:
 
 func _build_top_bar() -> void:
 	_top = HBoxContainer.new()
-	_top.add_theme_constant_override("separation", 14)
-	_back = _button("BACK", false, func(): _go_back())
-	_back.custom_minimum_size = Vector2(110, 52)
-	_top.add_child(_back)
-	_title = _label("", "Heading", 34)
-	_top.add_child(_title)
+	_top.add_theme_constant_override("separation", 12)
+	_title_pill = PanelContainer.new()
+	_title_pill.theme_type_variation = "SoftPanel"
+	_title_pill.add_theme_stylebox_override("panel", UiTheme.card(UiTheme.PANEL_SOFT, 30, 6, 0.6))
+	var th := HBoxContainer.new()
+	th.add_theme_constant_override("separation", 14)
+	_back = _icon_button("", "back", "IconButton", func(): _go_back())
+	_back.custom_minimum_size = Vector2(48, 48)
+	th.add_child(_back)
+	_title = _label("", "Heading", 30)
+	th.add_child(_title)
+	var pad := Control.new()
+	pad.custom_minimum_size = Vector2(6, 0)
+	th.add_child(pad)
+	_title_pill.add_child(th)
+	_top.add_child(_title_pill)
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -161,21 +205,36 @@ func _build_top_bar() -> void:
 	var lv := PanelContainer.new()
 	lv.theme_type_variation = "SoftPanel"
 	var lvb := HBoxContainer.new()
-	lvb.add_theme_constant_override("separation", 10)
-	_level = _label("LV 1", "", 22)
+	lvb.add_theme_constant_override("separation", 12)
+	_level = _label("LV 1", "", 21)
+	_level.add_theme_font_override("font", UiTheme.BOLD)
 	lvb.add_child(_level)
 	_xp = ProgressBar.new()
 	_xp.show_percentage = false
-	_xp.custom_minimum_size = Vector2(110, 8)
+	_xp.custom_minimum_size = Vector2(100, 10)
 	_xp.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	lvb.add_child(_xp)
 	lv.add_child(lvb)
 	_top.add_child(lv)
 	var cp := PanelContainer.new()
 	cp.theme_type_variation = "SoftPanel"
-	_cash = _label("$ 0", "", 24)
-	_cash.add_theme_color_override("font_color", UiTheme.AMBER)
-	cp.add_child(_cash)
+	var cb := HBoxContainer.new()
+	cb.add_theme_constant_override("separation", 8)
+	var coin := Label.new()
+	coin.text = "$"
+	coin.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	coin.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	coin.custom_minimum_size = Vector2(26, 26)
+	coin.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	coin.add_theme_font_override("font", UiTheme.BOLD)
+	coin.add_theme_font_size_override("font_size", 17)
+	coin.add_theme_color_override("font_color", UiTheme.ON_ACCENT)
+	coin.add_theme_stylebox_override("normal", UiTheme.box(UiTheme.ACCENT, 13, Color(0, 0, 0, 0), 0, 0))
+	cb.add_child(coin)
+	_cash = _label("0", "", 22)
+	_cash.add_theme_font_override("font", UiTheme.BOLD)
+	cb.add_child(_cash)
+	cp.add_child(cb)
 	_top.add_child(cp)
 	add_child(_top)
 
@@ -185,7 +244,7 @@ func refresh_top() -> void:
 	_level.text = "LV %d" % info["level"]
 	_xp.max_value = info["need"]
 	_xp.value = info["into"]
-	_cash.text = "$ " + UiTheme.money(save.cash)
+	_cash.text = UiTheme.money(save.cash)
 
 
 # ------------------------------------------------------------------ home
@@ -194,11 +253,11 @@ func _build_home() -> Control:
 	var s := _screen()
 	var side := TextureRect.new()
 	var grad := Gradient.new()
-	grad.set_color(0, Color(0.02, 0.025, 0.03, 0.85))
-	grad.set_color(1, Color(0.02, 0.025, 0.03, 0.0))
+	grad.set_color(0, UiTheme.SCRIM)
+	grad.set_color(1, Color(UiTheme.SCRIM, 0.0))
 	var gt := GradientTexture2D.new()
 	gt.gradient = grad
-	gt.fill_from = Vector2(0.3, 0)
+	gt.fill_from = Vector2(0.35, 0)
 	gt.fill_to = Vector2(1, 0)
 	side.texture = gt
 	side.stretch_mode = TextureRect.STRETCH_SCALE
@@ -207,27 +266,25 @@ func _build_home() -> Control:
 	s.add_child(side)
 	var col := VBoxContainer.new()
 	col.name = "Col"
-	col.add_theme_constant_override("separation", 12)
-	var title := _label("FLOWLINE", "Display")
-	col.add_child(title)
-	var tag := _label("Pass close to traffic to build Flow. Fill it for double points.", "Muted", 22)
-	tag.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	tag.custom_minimum_size = Vector2(440, 0)
-	col.add_child(tag)
-	var gap := Control.new()
-	gap.custom_minimum_size = Vector2(0, 18)
-	col.add_child(gap)
-	var play := _button("PLAY", true, func(): show_screen("modes"))
-	play.custom_minimum_size = Vector2(360, 78)
-	play.add_theme_font_size_override("font_size", 34)
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_theme_constant_override("separation", 14)
+	col.add_child(_label("FLOWLINE", "Display"))
+	var play := _icon_button("PLAY", "play", "PrimaryButton", func(): show_screen("modes"))
+	play.custom_minimum_size = Vector2(380, 80)
+	(play.get_meta("label") as Label).add_theme_font_size_override("font_size", 36)
 	col.add_child(play)
-	for spec in [["GARAGE", "garage"], ["MISSIONS", "missions"], ["SETTINGS", "settings"]]:
+	var tiles := HBoxContainer.new()
+	tiles.add_theme_constant_override("separation", 12)
+	for spec in [["GARAGE", "garage", "car"], ["MISSIONS", "missions", "flag"], ["SETTINGS", "settings", "gear"]]:
 		var target: String = spec[1]
-		var b := _button(spec[0], false, func(): show_screen(target))
-		b.custom_minimum_size = Vector2(360, 58)
+		var b := _icon_button(spec[0], spec[2], "Button", func(): show_screen(target), true)
+		b.custom_minimum_size = Vector2(118, 100)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		(b.get_meta("label") as Label).add_theme_font_size_override("font_size", 18)
 		b.name = target
-		col.add_child(b)
-	_home_best = _label("", "Muted", 20)
+		tiles.add_child(b)
+	col.add_child(tiles)
+	_home_best = _label("", "Caption", 17)
 	col.add_child(_home_best)
 	s.add_child(col)
 	return s
@@ -239,26 +296,38 @@ func _build_modes() -> Control:
 	var s := _screen()
 	var col := VBoxContainer.new()
 	col.name = "Col"
-	col.add_theme_constant_override("separation", 20)
+	col.add_theme_constant_override("separation", 16)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 16)
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	for m in MODES:
 		var card := PanelContainer.new()
-		card.custom_minimum_size = Vector2(300, 220)
+		card.custom_minimum_size = Vector2(300, 170)
 		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var v := VBoxContainer.new()
-		v.add_theme_constant_override("separation", 8)
+		v.add_theme_constant_override("separation", 6)
 		v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var head := HBoxContainer.new()
+		head.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var n := _label(m["name"], "Heading", 34)
+		n.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		n.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		v.add_child(n)
+		head.add_child(n)
+		var tick := PanelContainer.new()
+		tick.custom_minimum_size = Vector2(30, 30)
+		tick.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		tick.add_theme_stylebox_override("panel", UiTheme.box(UiTheme.ACCENT, 15, Color(0, 0, 0, 0), 0, 0))
+		tick.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		tick.add_child(UiIcon.make("check", 22.0, UiTheme.ON_ACCENT))
+		tick.name = "Tick"
+		head.add_child(tick)
+		v.add_child(head)
 		var d := _label(m["desc"], "Muted", 19)
 		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		d.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		d.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		v.add_child(d)
-		var best := _label("", "Caption", 17)
+		var best := _label("", "Caption", 16)
 		best.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		v.add_child(best)
 		_mode_best[m["id"]] = best
@@ -272,48 +341,73 @@ func _build_modes() -> Control:
 		_mode_cards[id] = card
 		row.add_child(card)
 	col.add_child(row)
-	var envrow := HBoxContainer.new()
-	envrow.add_theme_constant_override("separation", 10)
-	envrow.add_child(_label("TIME OF DAY", "Caption", 17))
+	# Run options, one aligned row each, with DRIVE beside them.
+	var bar := PanelContainer.new()
+	bar.add_theme_stylebox_override("panel", UiTheme.card(UiTheme.PANEL, UiTheme.R + 6, 20))
+	var hb := HBoxContainer.new()
+	hb.add_theme_constant_override("separation", 20)
+	var opts := VBoxContainer.new()
+	opts.add_theme_constant_override("separation", 8)
+	opts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var g := ButtonGroup.new()
+	var seg := _option_row(opts, "TIME OF DAY")
 	for e in ENVS:
 		var id: String = e[0]
 		var chip := _chip(e[1], g, func():
 			_env = id
 			_refresh_modes())
 		_env_chips[id] = chip
-		envrow.add_child(chip)
-	var sp := Control.new()
-	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	sp.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	envrow.add_child(sp)
-	_go = _button("DRIVE", true, func():
+		seg.add_child(chip)
+	# Arrows or a wheel on screen, or GYRO (turn the phone; the saved value is still "tilt").
+	var sg := ButtonGroup.new()
+	var sseg := _option_row(opts, "STEERING")
+	for o in [["ARROWS", "buttons"], ["WHEEL", "wheel"], ["GYRO", "tilt"]]:
+		var val: String = o[1]
+		var chip := _chip(o[0], sg, func():
+			save.settings["controls"] = val
+			save.save_to_disk()
+			settings_changed.emit())
+		_steer_chips[val] = chip
+		sseg.add_child(chip)
+	hb.add_child(opts)
+	_go = _icon_button("DRIVE", "play", "PrimaryButton", func():
 		save.last_mode = _mode
 		save.last_env = _env
 		save.save_to_disk()
 		play_requested.emit(_mode, _env))
-	_go.custom_minimum_size = Vector2(240, 70)
-	_go.add_theme_font_size_override("font_size", 32)
-	envrow.add_child(_go)
-	col.add_child(envrow)
+	_go.custom_minimum_size = Vector2(300, 0)
+	(_go.get_meta("label") as Label).add_theme_font_size_override("font_size", 40)
+	hb.add_child(_go)
+	bar.add_child(hb)
+	col.add_child(bar)
 	s.add_child(col)
 	return s
 
 
 func _refresh_modes() -> void:
+	# Motorcycles steer with the arrows or GYRO only: no wheel chip for them.
+	var steer := save.steer_for(save.selected_car)
+	for k in _steer_chips:
+		(_steer_chips[k] as Button).visible = k != "wheel" or not CarCatalog.is_bike(save.selected_car)
+		(_steer_chips[k] as Button).set_pressed_no_signal(steer == k)
 	var lvl := save.level()
 	for m in MODES:
 		var card: PanelContainer = _mode_cards[m["id"]]
 		var on: bool = m["id"] == _mode
-		card.add_theme_stylebox_override("panel", UiTheme.box(UiTheme.PANEL, 16,
-				UiTheme.AMBER if on else UiTheme.LINE, 2 if on else 1, 22))
+		var sb := UiTheme.card(UiTheme.PANEL, UiTheme.R + 6, 24, 1.4 if on else 0.6)
+		if on:
+			sb.border_color = UiTheme.ACCENT
+			sb.set_border_width_all(3)
+		card.add_theme_stylebox_override("panel", sb)
+		card.modulate.a = 1.0 if on else 0.82
+		(card.find_child("Tick", true, false) as Control).modulate.a = 1.0 if on else 0.0
 		var best := int(save.best_by_mode.get(m["id"], 0))
-		(_mode_best[m["id"]] as Label).text = "BEST  %s" % UiTheme.money(best) if best > 0 else "NO RUNS YET"
+		(_mode_best[m["id"]] as Label).text = "BEST  %s" % UiTheme.money(best) if best > 0 else ""
 	for e in ENVS:
 		var chip: Button = _env_chips[e[0]]
 		var need: int = e[2]
 		chip.disabled = lvl < need
-		chip.text = e[1] if lvl >= need else "%s  ·  LV %d" % [e[1], need]
+		chip.text = e[1] if lvl >= need else "%s  LV %d" % [e[1], need]
 		chip.button_pressed = e[0] == _env
 	if lvl < _env_need(_env):
 		_env = "day"
@@ -337,62 +431,43 @@ func _build_garage() -> Control:
 	v.add_theme_constant_override("separation", 10)
 	panel.add_child(v)
 	var head := HBoxContainer.new()
-	_g["count"] = _label("", "Caption", 16)
-	_g["class"] = _label("", "Caption", 16)
+	_g["count"] = _label("", "Caption", 15)
+	_g["class"] = _label("", "Caption", 15)
+	_g["class"].add_theme_color_override("font_color", UiTheme.AMBER)
 	_g["class"].size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(_g["class"])
 	head.add_child(_g["count"])
 	v.add_child(head)
-	_g["name"] = _label("", "Heading", 44)
+	_g["name"] = _label("", "Heading", 36)
 	v.add_child(_g["name"])
-	_g["blurb"] = _label("", "Muted", 18)
-	_g["blurb"].autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_g["blurb"].custom_minimum_size = Vector2(380, 0)
-	v.add_child(_g["blurb"])
-	var stats := GridContainer.new()
-	stats.columns = 2
-	stats.add_theme_constant_override("h_separation", 14)
-	stats.add_theme_constant_override("v_separation", 8)
-	_g["bars"] = {}
-	for cat in Progression.UPGRADES:
-		var l := _label(Progression.UPGRADE_NAMES[cat].to_upper(), "Caption", 15)
-		l.custom_minimum_size = Vector2(118, 0)
-		stats.add_child(l)
-		var bar := ProgressBar.new()
-		bar.show_percentage = false
-		bar.max_value = 1.0
-		bar.step = 0.001
-		bar.custom_minimum_size = Vector2(240, 10)
-		bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		stats.add_child(bar)
-		_g["bars"][cat] = bar
-	v.add_child(stats)
-	var tabs := HBoxContainer.new()
-	tabs.add_theme_constant_override("separation", 8)
 	var tg := ButtonGroup.new()
-	for t in [["UPGRADE", "upgrade"], ["PAINT", "paint"], ["RIMS", "rims"]]:
+	var tabs := _segment(v)
+	for t in [["UPGRADE", "upgrade"], ["PAINT", "paint"], ["RIMS", "rims"], ["PLATE", "plate"]]:
 		var id: String = t[1]
 		var chip := _chip(t[0], tg, func():
 			_g_tab = id
 			_refresh_garage())
 		chip.button_pressed = id == _g_tab
+		chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		tabs.add_child(chip)
-	v.add_child(tabs)
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.scroll_deadzone = NO_DRAG
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_g["tab"] = VBoxContainer.new()
-	_g["tab"].add_theme_constant_override("separation", 8)
-	_g["tab"].size_flags_vertical = Control.SIZE_EXPAND_FILL
-	v.add_child(_g["tab"])
+	_g["tab"].add_theme_constant_override("separation", 6)
+	_g["tab"].size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(_g["tab"])
+	v.add_child(scroll)
 	_g["action"] = _button("", true, func(): _garage_action())
-	_g["action"].custom_minimum_size = Vector2(0, 66)
-	_g["action"].add_theme_font_size_override("font_size", 28)
+	_g["action"].custom_minimum_size = Vector2(0, 58)
+	_g["action"].add_theme_font_size_override("font_size", 26)
 	v.add_child(_g["action"])
 	s.add_child(panel)
 	for d in [-1, 1]:
 		var step: int = d
-		var b := _button("<" if d < 0 else ">", false, func(): _browse(step))
-		b.custom_minimum_size = Vector2(64, 96)
-		b.add_theme_font_size_override("font_size", 40)
+		var b := _icon_button("", "back" if d < 0 else "next", "IconButton", func(): _browse(step))
+		b.custom_minimum_size = Vector2(64, 64)
 		b.name = "Prev" if d < 0 else "Next"
 		s.add_child(b)
 	return s
@@ -423,10 +498,6 @@ func _refresh_garage() -> void:
 	_g["name"].text = String(car["name"]).to_upper()
 	_g["class"].text = String(car["class"]).to_upper()
 	_g["count"].text = "%d / %d" % [_gi + 1, CarCatalog.PLAYER_CARS.size()]
-	_g["blurb"].text = car["blurb"]
-	var r := Progression.ratings(Progression.stats_for(car, save.car_levels(id) if owned else {}))
-	for cat in Progression.UPGRADES:
-		(_g["bars"][cat] as ProgressBar).value = r[cat]
 	var tab: VBoxContainer = _g["tab"]
 	for c in tab.get_children():
 		c.queue_free()
@@ -437,35 +508,45 @@ func _refresh_garage() -> void:
 			_fill_swatches(tab, id, true)
 		"rims":
 			_fill_swatches(tab, id, false)
+		"plate":
+			_fill_plate(tab)
 	_refresh_action()
 	refresh_top()
 	_preview()
 
 
+## One row per stat: its rating bar (which grows with upgrades), the level,
+## and the price of the next level.
 func _fill_upgrades(tab: VBoxContainer, car: Dictionary, owned: bool) -> void:
 	var id: String = car["id"]
 	var lv := save.car_levels(id)
+	var r := Progression.ratings(Progression.stats_for(car, lv if owned else {}))
 	for cat in Progression.UPGRADES:
+		var strip := PanelContainer.new()
+		strip.add_theme_stylebox_override("panel", UiTheme.box(Color(UiTheme.WELL, 0.55), UiTheme.R - 4, Color(0, 0, 0, 0), 0, 10))
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 10)
 		var name := _label(Progression.UPGRADE_NAMES[cat], "", 20)
-		name.custom_minimum_size = Vector2(130, 0)
+		name.custom_minimum_size = Vector2(118, 0)
 		row.add_child(name)
-		var pips := HBoxContainer.new()
-		pips.add_theme_constant_override("separation", 4)
-		pips.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		pips.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		for i in Progression.MAX_LEVEL:
-			var p := ColorRect.new()
-			p.custom_minimum_size = Vector2(22, 8)
-			p.color = UiTheme.AMBER if i < int(lv[cat]) else Color(1, 1, 1, 0.14)
-			pips.add_child(p)
-		row.add_child(pips)
+		var bar := ProgressBar.new()
+		bar.show_percentage = false
+		bar.max_value = 1.0
+		bar.step = 0.001
+		bar.value = r[cat]
+		bar.custom_minimum_size = Vector2(60, 10)
+		bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(bar)
 		var level := int(lv[cat])
+		var lvl := _label("%d/%d" % [level, Progression.MAX_LEVEL], "Caption", 15)
+		lvl.custom_minimum_size = Vector2(30, 0)
+		row.add_child(lvl)
 		var b := Button.new()
+		b.theme_type_variation = "SmallButton"
 		b.focus_mode = Control.FOCUS_NONE
-		b.custom_minimum_size = Vector2(130, 44)
-		b.add_theme_font_size_override("font_size", 20)
+		b.custom_minimum_size = Vector2(112, 40)
+		b.add_theme_font_size_override("font_size", 19)
 		if level >= Progression.MAX_LEVEL:
 			b.text = "MAX"
 			b.disabled = true
@@ -485,9 +566,8 @@ func _fill_upgrades(tab: VBoxContainer, car: Dictionary, owned: bool) -> void:
 					settings_changed.emit()
 				_refresh_garage())
 		row.add_child(b)
-		tab.add_child(row)
-	if not owned:
-		tab.add_child(_label("Buy this car to upgrade it.", "Caption", 16))
+		strip.add_child(row)
+		tab.add_child(strip)
 
 
 func _fill_swatches(tab: VBoxContainer, id: String, paint: bool) -> void:
@@ -512,9 +592,9 @@ func _fill_swatches(tab: VBoxContainer, id: String, paint: bool) -> void:
 		b.tooltip_text = e[1]
 		var sel := idx == current
 		var have := owned.has(idx) or (paint and idx == -1)
-		b.add_theme_stylebox_override("normal", UiTheme.box(e[2], 24, UiTheme.AMBER if sel else Color(1, 1, 1, 0.3), 3 if sel else 1, 0))
-		b.add_theme_stylebox_override("hover", UiTheme.box(e[2], 24, Color.WHITE, 2, 0))
-		b.add_theme_stylebox_override("pressed", UiTheme.box(e[2], 24, UiTheme.AMBER, 3, 0))
+		b.add_theme_stylebox_override("normal", UiTheme.box(e[2], 24, UiTheme.ACCENT if sel else UiTheme.tint(0.15), 4 if sel else 1, 0))
+		b.add_theme_stylebox_override("hover", UiTheme.box(e[2], 24, UiTheme.INK, 2, 0))
+		b.add_theme_stylebox_override("pressed", UiTheme.box(e[2], 24, UiTheme.ACCENT, 4, 0))
 		if not have:
 			b.text = "$"
 			b.add_theme_color_override("font_color", Color(1, 1, 1, 0.85))
@@ -542,7 +622,7 @@ func _fill_swatches(tab: VBoxContainer, id: String, paint: bool) -> void:
 		if e[0] == current:
 			name = e[1]
 	var cost := Progression.PAINT_COST if paint else Progression.RIM_COST
-	tab.add_child(_label("%s   ·   new colours $ %s, then free to switch" % [name.to_upper(), UiTheme.money(cost)], "Caption", 16))
+	tab.add_child(_label("%s  ·  NEW $ %s" % [name.to_upper(), UiTheme.money(cost)], "Caption", 15))
 
 
 func _refresh_action() -> void:
@@ -550,6 +630,7 @@ func _refresh_action() -> void:
 	var id: String = car["id"]
 	var b: Button = _g["action"]
 	b.disabled = false
+	_mark_selected(b, false)
 	var owned := save.owned_cars.has(id)
 	if owned and _pending_paint > -2 and not (save.owned_paints.get(id, []) as Array).has(_pending_paint) and _pending_paint != -1:
 		b.text = "BUY PAINT  ·  $ " + UiTheme.money(Progression.PAINT_COST)
@@ -567,8 +648,43 @@ func _refresh_action() -> void:
 	elif save.selected_car == id:
 		b.text = "SELECTED"
 		b.disabled = true
+		_mark_selected(b, true)
 	else:
 		b.text = "SELECT"
+
+
+## The car you drive: the action button turns solid green with a tick, so it
+## reads as chosen rather than greyed out.
+func _mark_selected(b: Button, on: bool) -> void:
+	if not _g.has("tick"):
+		var tick := UiIcon.make("check", 26, Color.WHITE)
+		tick.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		b.add_child(tick)
+		_g["tick"] = tick
+	var tick: Control = _g["tick"]
+	tick.visible = on
+	if not on:
+		b.remove_theme_stylebox_override("disabled")
+		b.remove_theme_color_override("font_disabled_color")
+		return
+	var sb := UiTheme.box(UiTheme.GOOD, UiTheme.R - 4, Color(0, 0, 0, 0), 0, 22)
+	b.add_theme_stylebox_override("disabled", sb)
+	# Dark mode's green is bright: dark text reads better on it.
+	var ink := Color(0.02, 0.16, 0.08) if UiTheme.mode == "dark" else Color.WHITE
+	b.add_theme_color_override("font_disabled_color", ink)
+	(tick as UiIcon).color = ink
+	tick.queue_redraw()
+	# Tick just left of the centred label.
+	var fs := b.get_theme_font_size("font_size")
+	var w := b.get_theme_font("font").get_string_size(b.text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	tick.anchor_left = 0.5
+	tick.anchor_right = 0.5
+	tick.anchor_top = 0.5
+	tick.anchor_bottom = 0.5
+	tick.offset_left = -w * 0.5 - 40.0
+	tick.offset_top = -13.0
+	tick.offset_right = tick.offset_left + 26.0
+	tick.offset_bottom = 13.0
 
 
 func _garage_action() -> void:
@@ -597,18 +713,19 @@ func _garage_action() -> void:
 
 func _build_missions() -> Control:
 	var s := _screen()
-	var panel := PanelContainer.new()
-	panel.name = "Panel"
-	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 14)
+	var panel := VBoxContainer.new()
+	panel.add_theme_constant_override("separation", 14)
+	var hero := PanelContainer.new()
+	hero.add_theme_stylebox_override("panel", UiTheme.card(UiTheme.ACCENT, UiTheme.R + 6, 24, 1.0))
 	_daily_box = VBoxContainer.new()
-	v.add_child(_daily_box)
-	v.add_child(HSeparator.new())
+	hero.add_child(_daily_box)
+	panel.add_child(hero)
+	var card := PanelContainer.new()
 	_missions_box = VBoxContainer.new()
-	_missions_box.add_theme_constant_override("separation", 16)
-	v.add_child(_missions_box)
-	panel.add_child(v)
-	s.add_child(panel)
+	_missions_box.add_theme_constant_override("separation", 10)
+	card.add_child(_missions_box)
+	panel.add_child(card)
+	s.add_child(_scroller(panel))
 	return s
 
 
@@ -621,25 +738,44 @@ func _refresh_missions() -> void:
 	var row := HBoxContainer.new()
 	var info := VBoxContainer.new()
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	info.add_child(_label("DAILY REWARD", "Caption", 16))
+	var cap := _label("DAILY REWARD", "Caption", 15)
+	cap.add_theme_color_override("font_color", Color(UiTheme.ON_ACCENT, 0.65))
+	info.add_child(cap)
+	var big: Label
 	if st["available"]:
-		info.add_child(_label("Day %d streak: $ %s" % [st["streak"], UiTheme.money(st["reward"])], "", 26))
+		big = _label("Day %d:  $ %s" % [st["streak"], UiTheme.money(st["reward"])], "Heading", 30)
 	else:
-		info.add_child(_label("Claimed. Come back tomorrow for day %d." % (save.daily_streak + 1), "", 24))
+		big = _label("Claimed. Back tomorrow.", "Heading", 28)
+	big.add_theme_color_override("font_color", UiTheme.ON_ACCENT)
+	info.add_child(big)
 	row.add_child(info)
 	if st["available"]:
-		var b := _button("CLAIM", true, func(): _claim_daily())
+		var b := _button("CLAIM", false, func(): _claim_daily())
 		b.custom_minimum_size = Vector2(160, 56)
+		b.add_theme_stylebox_override("normal", UiTheme.card(UiTheme.ON_ACCENT, UiTheme.R - 4, 18, 0.5))
+		b.add_theme_stylebox_override("hover", UiTheme.card(UiTheme.ON_ACCENT.lightened(0.1), UiTheme.R - 4, 18, 0.7))
+		b.add_theme_stylebox_override("pressed", UiTheme.card(UiTheme.ON_ACCENT, UiTheme.R - 4, 18, 0.2))
+		for c in ["font_color", "font_hover_color", "font_pressed_color"]:
+			b.add_theme_color_override(c, UiTheme.ACCENT)
 		row.add_child(b)
 	_daily_box.add_child(row)
 	for m in save.missions:
+		var strip := PanelContainer.new()
+		strip.theme_type_variation = "Row"
 		var r := VBoxContainer.new()
 		r.add_theme_constant_override("separation", 6)
 		var top := HBoxContainer.new()
-		var t := _label(m["text"], "", 22)
+		var t := _label(m["text"], "", 21)
 		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		top.add_child(t)
-		var rw := _label("$ " + UiTheme.money(int(m["reward"])), "", 22)
+		var prog := _label("%d / %d" % [int(m["progress"]), int(m["target"])], "Caption", 15)
+		prog.custom_minimum_size = Vector2(70, 0)
+		prog.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		top.add_child(prog)
+		var rw := _label("$ " + UiTheme.money(int(m["reward"])), "", 21)
+		rw.custom_minimum_size = Vector2(90, 0)
+		rw.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		rw.add_theme_font_override("font", UiTheme.BOLD)
 		rw.add_theme_color_override("font_color", UiTheme.AMBER)
 		top.add_child(rw)
 		r.add_child(top)
@@ -647,13 +783,10 @@ func _refresh_missions() -> void:
 		bar.show_percentage = false
 		bar.max_value = float(m["target"])
 		bar.value = float(m["progress"])
-		bar.custom_minimum_size = Vector2(0, 8)
+		bar.custom_minimum_size = Vector2(0, 10)
 		r.add_child(bar)
-		var lbl := "%d / %d" % [int(m["progress"]), int(m["target"])]
-		if not m["per_run"]:
-			lbl += "  ·  adds up over runs"
-		r.add_child(_label(lbl, "Caption", 15))
-		_missions_box.add_child(r)
+		strip.add_child(r)
+		_missions_box.add_child(strip)
 
 
 static func today() -> String:
@@ -699,9 +832,6 @@ func maybe_show_daily() -> void:
 	amt.add_theme_color_override("font_color", UiTheme.AMBER)
 	amt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(amt)
-	var sub := _label("Come back every day. The reward grows for 7 days in a row.", "Muted", 19)
-	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	v.add_child(sub)
 	var b := _button("CLAIM", true, func(): _claim_daily())
 	b.custom_minimum_size = Vector2(260, 64)
 	b.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
@@ -719,55 +849,53 @@ func maybe_show_daily() -> void:
 
 func _build_settings() -> Control:
 	var s := _screen()
-	var panel := PanelContainer.new()
-	panel.name = "Panel"
-	var grid := GridContainer.new()
-	grid.columns = 2
-	grid.add_theme_constant_override("h_separation", 30)
-	grid.add_theme_constant_override("v_separation", 16)
-	panel.add_child(grid)
-	_slider_row(grid, "Sound effects", "sfx")
-	_slider_row(grid, "Engine sound", "engine")
-	_choice_row(grid, "Crashes", "crashes", [["KEEP DRIVING", "keep"], ["END THE RUN", "end"]])
-	_choice_row(grid, "Steering", "controls", [["BUTTONS", "buttons"], ["TILT", "tilt"]])
-	_slider_row(grid, "Steering sensitivity", "steer_sensitivity", 0.5, 1.5)
-	_choice_row(grid, "Camera", "camera", [["CLOSE", "near"], ["FAR", "far"]])
-	_choice_row(grid, "Graphics", "quality", [["HIGH", "high"], ["BATTERY SAVER", "low"]])
-	_choice_row(grid, "Speed", "units", [["KM/H", "kmh"], ["MPH", "mph"]])
-	s.add_child(panel)
+	var panel := VBoxContainer.new()
+	panel.add_theme_constant_override("separation", 16)
+	# Two 3-row cards side by side, so rows line up straight across.
+	var cols := HBoxContainer.new()
+	cols.add_theme_constant_override("separation", 16)
+	panel.add_child(cols)
+	var look := _section(cols, "DISPLAY")
+	var sw := CheckButton.new()
+	sw.focus_mode = Control.FOCUS_NONE
+	sw.button_pressed = UiTheme.dark()
+	sw.toggled.connect(func(on: bool):
+		clicked.emit()
+		save.settings["theme"] = "dark" if on else "light"
+		save.save_to_disk()
+		_restyle.call_deferred())  # deferred: this switch is freed by the rebuild
+	_setting_row(look, "Dark mode").add_child(sw)
+	_choice_row(look, "Graphics", "quality", [["HIGH", "high"], ["SAVER", "low"]])
+	_choice_row(look, "Speed", "units", [["KM/H", "kmh"], ["MPH", "mph"]])
+	var ctl := _section(cols, "CONTROLS")
+	_choice_row(ctl, "Steering", "controls", [["ARROWS", "buttons"], ["WHEEL", "wheel"], ["GYRO", "tilt"]])
+	_choice_row(ctl, "Pedal", "gas", [["GAS PEDAL", "pedal"], ["AUTO", "auto"]])
+	_choice_row(ctl, "Hands", "skin", [["LIGHT", "light"], ["MEDIUM", "medium"], ["TAN", "tan"],
+			["BROWN", "brown"], ["DARK", "dark"]])
+	_setting_row(ctl, "Sensitivity").add_child(_slider("steer_sensitivity", 0.5, 1.5))
+	for c in cols.get_children():
+		(c as Control).size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# Full-width cards: the camera views, then the three volumes side by side.
+	var cam := _section(panel, "CAMERA")
+	_choice_seg(cam, "camera", [["CHASE", "near"], ["TOP", "top"], ["COCKPIT", "cockpit"]])
+	var snd := _section(panel, "SOUND")
+	var vols := HBoxContainer.new()
+	vols.add_theme_constant_override("separation", 32)
+	for spec in [["Music", "music"], ["Effects", "sfx"], ["Engine", "engine"]]:
+		var v := VBoxContainer.new()
+		v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		v.add_child(_label(spec[0], "", 21))
+		v.add_child(_slider(spec[1]))
+		vols.add_child(v)
+	snd.add_child(vols)
+	s.add_child(_scroller(panel))
 	return s
 
 
-func _slider_row(grid: GridContainer, text: String, key: String, lo := 0.0, hi := 1.0) -> void:
-	grid.add_child(_label(text, "", 22))
-	var sl := HSlider.new()
-	sl.min_value = lo
-	sl.max_value = hi
-	sl.step = 0.05
-	sl.custom_minimum_size = Vector2(320, 36)
-	sl.value = float(save.settings.get(key, 1.0))
-	sl.value_changed.connect(func(v: float):
-		save.settings[key] = v
-		settings_changed.emit())
-	sl.drag_ended.connect(func(_c: bool): save.save_to_disk())
-	grid.add_child(sl)
-	_settings_rows[key] = sl
 
 
-func _choice_row(grid: GridContainer, text: String, key: String, options: Array) -> void:
-	grid.add_child(_label(text, "", 22))
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
-	var g := ButtonGroup.new()
-	for o in options:
-		var val: String = o[1]
-		var chip := _chip(o[0], g, func():
-			save.settings[key] = val
-			save.save_to_disk()
-			settings_changed.emit())
-		chip.button_pressed = str(save.settings.get(key, "")) == val
-		row.add_child(chip)
-	grid.add_child(row)
+func _choice_row(parent: VBoxContainer, text: String, key: String, options: Array) -> void:
+	_choice_seg(_setting_row(parent, text), key, options)
 
 
 # ------------------------------------------------------------------ navigation
@@ -780,7 +908,7 @@ func show_screen(name: String) -> void:
 	_current = name
 	for k in _screens:
 		(_screens[k] as Control).visible = k == name
-	_back.visible = name != "home"
+	_title_pill.visible = name != "home"
 	_title.text = {"home": "", "modes": "CHOOSE A MODE", "garage": "GARAGE", "missions": "MISSIONS",
 			"settings": "SETTINGS"}[name]
 	match name:
@@ -795,6 +923,10 @@ func show_screen(name: String) -> void:
 			_refresh_garage()
 		"missions":
 			_refresh_missions()
+		"settings":  # some choices can change elsewhere (camera button, mode screen)
+			for key in _choice_chips:
+				for val in _choice_chips[key]:
+					(_choice_chips[key][val] as Button).set_pressed_no_signal(str(save.settings.get(key, "")) == val)
 	refresh_top()
 	screen_changed.emit(name)
 	_layout()
@@ -821,7 +953,7 @@ func _layout() -> void:
 	size = vp
 	var s := _safe_rect()
 	_top.position = s.position
-	_top.size = Vector2(s.size.x, 56)
+	_top.size = Vector2(s.size.x, 60)
 	for k in _screens:
 		var sc: Control = _screens[k]
 		sc.position = Vector2.ZERO
@@ -834,8 +966,8 @@ func _layout() -> void:
 	hc.size = Vector2(minf(520, s.size.x * 0.5), s.size.y - 60)
 	var modes: Control = _screens["modes"]
 	var mc: Control = modes.get_node("Col")
-	mc.position = Vector2(s.position.x, s.position.y + 80)
-	mc.size = Vector2(s.size.x, s.size.y - 80)
+	mc.position = Vector2(s.position.x, s.position.y + 76)
+	mc.size = Vector2(s.size.x, s.size.y - 76)
 	var gar: Control = _screens["garage"]
 	var gp: Control = gar.get_node("Panel")
 	var pw := minf(500.0, s.size.x * 0.46)
@@ -843,14 +975,309 @@ func _layout() -> void:
 	gp.size = Vector2(pw, s.size.y - 70)
 	var prev: Control = gar.get_node("Prev")
 	var nxt: Control = gar.get_node("Next")
-	prev.position = Vector2(s.position.x, vp.y * 0.5 - 48)
-	nxt.position = Vector2(gp.position.x - 84, vp.y * 0.5 - 48)
+	prev.position = Vector2(s.position.x, vp.y * 0.5 - 32)
+	nxt.position = Vector2(gp.position.x - 84, vp.y * 0.5 - 32)
 	for k in ["missions", "settings"]:
 		var p: Control = (_screens[k] as Control).get_node("Panel")
-		var w := minf(820.0, s.size.x)
-		p.position = Vector2(vp.x * 0.5 - w * 0.5, s.position.y + 76)
-		p.size = Vector2(w, 0)
+		var w := minf(820.0 if k == "missions" else 1120.0, s.size.x) + SCROLL_PAD * 2.0
+		var top := s.position.y + 72 - SCROLL_PAD
+		p.position = Vector2(vp.x * 0.5 - w * 0.5, top)
+		p.size = Vector2(w, vp.y - top)
 	_toast.position = Vector2(0, vp.y * 0.16)
 	_toast.size = Vector2(vp.x, 50)
 	if _daily_popup:
 		_daily_popup.size = vp
+
+
+## A button whose face is an icon and/or text laid out by a box container
+## (Button's own icon slot wants a texture; our icons are drawn).
+func _icon_button(text: String, icon: String, variation: String, cb: Callable, vertical := false) -> Button:
+	var b := _button("", false, cb)
+	b.theme_type_variation = variation
+	var box: BoxContainer = VBoxContainer.new() if vertical else HBoxContainer.new()
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_theme_constant_override("separation", 6 if vertical else 12)
+	box.set_anchors_preset(Control.PRESET_FULL_RECT)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var ink := UiTheme.ON_ACCENT if variation == "PrimaryButton" else UiTheme.INK
+	if icon != "":
+		var i := UiIcon.make(icon, 34.0 if vertical else 26.0, ink)
+		i.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		box.add_child(i)
+	if text != "":
+		var l := _label(text, "", 0)
+		l.add_theme_font_override("font", UiTheme.BOLD)
+		l.add_theme_color_override("font_color", ink)
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		box.add_child(l)
+		b.set_meta("label", l)
+	b.add_child(box)
+	return b
+
+
+## A recessed track holding a row of options; returns the row to add chips to.
+func _segment(parent: Control) -> HBoxContainer:
+	var track := PanelContainer.new()
+	track.theme_type_variation = "Segment"
+	track.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 4)
+	track.add_child(row)
+	parent.add_child(track)
+	return row
+
+
+## A titled group of settings rows: caption above a card.
+func _section(parent: Control, title: String) -> VBoxContainer:
+	var card := PanelContainer.new()
+	card.add_theme_stylebox_override("panel", UiTheme.card(UiTheme.PANEL, UiTheme.R + 6, 22))
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 12)
+	v.add_child(_label(title, "Caption", 14))
+	card.add_child(v)
+	parent.add_child(card)
+	return v
+
+
+## A settings line: label on the left, a fixed-width, right-aligned slot for
+## the control (returned), so every control in a card shares one edge.
+func _setting_row(parent: VBoxContainer, text: String) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	row.custom_minimum_size = Vector2(0, 46)
+	var l := _label(text, "", 21)
+	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(l)
+	var slot := HBoxContainer.new()
+	slot.custom_minimum_size = Vector2(CONTROL_W, 0)
+	slot.alignment = BoxContainer.ALIGNMENT_END
+	row.add_child(slot)
+	parent.add_child(row)
+	return slot
+
+
+func _option_row(parent: VBoxContainer, text: String) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	var l := _label(text, "Caption", 15)
+	l.custom_minimum_size = Vector2(120, 0)
+	row.add_child(l)
+	var seg := _segment(row)
+	seg.get_parent().custom_minimum_size = Vector2(440, 0)
+	seg.child_entered_tree.connect(func(c: Node):
+		(c as Control).size_flags_horizontal = Control.SIZE_EXPAND_FILL)
+	parent.add_child(row)
+	return seg
+
+
+## The number plate, drawn like a real European plate (blue band, black
+## frame). Tapping it opens the phone's own keyboard.
+func _fill_plate(tab: VBoxContainer) -> void:
+	var plate := PanelContainer.new()
+	plate.custom_minimum_size = Vector2(0, 92)
+	plate.add_theme_stylebox_override("panel", UiTheme.box(Color(0.96, 0.96, 0.93), 10, Color(0.07, 0.07, 0.09), 4, 4))
+	var hb := HBoxContainer.new()
+	hb.add_theme_constant_override("separation", 0)
+	var band := PanelContainer.new()
+	band.custom_minimum_size = Vector2(38, 0)
+	var bs := UiTheme.box(Color(0.0, 0.2, 0.6), 0, Color(0, 0, 0, 0), 0, 0)
+	bs.corner_radius_top_left = 7
+	bs.corner_radius_bottom_left = 7
+	band.add_theme_stylebox_override("panel", bs)
+	var code := Label.new()
+	code.text = "FL"
+	code.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	code.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	code.add_theme_font_override("font", UiTheme.BOLD)
+	code.add_theme_font_size_override("font_size", 17)
+	code.add_theme_color_override("font_color", Color.WHITE)
+	band.add_child(code)
+	hb.add_child(band)
+	var ed := LineEdit.new()
+	ed.text = save.plate
+	ed.max_length = 8
+	ed.placeholder_text = "TAP TO TYPE"
+	ed.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ed.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ed.virtual_keyboard_enabled = true
+	ed.context_menu_enabled = false
+	ed.add_theme_font_override("font", UiTheme.BOLD)
+	ed.add_theme_font_size_override("font_size", 58)
+	for c in ["font_color", "font_uneditable_color"]:
+		ed.add_theme_color_override(c, Color(0.06, 0.07, 0.1))
+	ed.add_theme_color_override("font_placeholder_color", Color(0.06, 0.07, 0.1, 0.3))
+	ed.add_theme_color_override("caret_color", Color(0.06, 0.07, 0.1))
+	ed.add_theme_color_override("selection_color", Color(UiTheme.ACCENT, 0.4))
+	for st in ["normal", "focus", "read_only"]:
+		ed.add_theme_stylebox_override(st, StyleBoxEmpty.new())
+	ed.text_changed.connect(func(t: String):
+		var clean := SaveData.clean_plate(t)
+		if clean != t:
+			ed.text = clean
+			ed.caret_column = clean.length()
+		_set_plate(clean))
+	ed.text_submitted.connect(func(_t: String): ed.release_focus())
+	hb.add_child(ed)
+	plate.add_child(hb)
+	tab.add_child(plate)
+	var hint := _label("TAP THE PLATE TO CHANGE IT", "Caption", 14)
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tab.add_child(hint)
+
+
+
+
+
+
+
+
+
+
+func _set_plate(text: String) -> void:
+	save.plate = SaveData.clean_plate(text)
+	save.save_to_disk()
+	_preview()
+
+
+
+
+func _slider(key: String, lo := 0.0, hi := 1.0) -> HSlider:
+	var sl := HSlider.new()
+	sl.min_value = lo
+	sl.max_value = hi
+	sl.step = 0.05
+	sl.custom_minimum_size = Vector2(0, 34)
+	sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	sl.value = float(save.settings.get(key, 1.0))
+	sl.value_changed.connect(func(v: float):
+		save.settings[key] = v
+		settings_changed.emit())
+	sl.drag_ended.connect(func(_c: bool): save.save_to_disk())
+	_settings_rows[key] = sl
+	return sl
+
+
+## A segmented choice bound to a setting, stretched across its parent.
+func _choice_seg(parent: Container, key: String, options: Array) -> void:
+	var seg := _segment(parent)
+	seg.get_parent().size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var g := ButtonGroup.new()
+	for o in options:
+		var val: String = o[1]
+		var chip := _chip(o[0], g, func():
+			save.settings[key] = val
+			save.save_to_disk()
+			settings_changed.emit())
+		chip.button_pressed = str(save.settings.get(key, "")) == val
+		chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_choice_chips.get_or_add(key, {})[val] = chip
+		seg.add_child(chip)
+
+
+## Touch scrolling. Settings and missions are almost all buttons, chips and
+## sliders, and those keep the finger, so the ScrollContainer underneath
+## never saw a swipe. Swipes are read here instead: once the finger has
+## clearly moved up or down, whatever it pressed is let go (no tap fires)
+## and the list follows the finger, then glides on with momentum.
+const SWIPE_START := 14.0   ## pixels of vertical travel before it counts as a swipe
+## Lists don't drag themselves (that fought with the swipes above); the
+## mouse wheel still scrolls them.
+const NO_DRAG := 1 << 20
+
+var _sw_scroll: ScrollContainer   # list under the finger
+var _sw_from := Vector2.ZERO
+var _sw_active := false
+var _sw_vel := 0.0               # pixels per second, for the glide
+var _sw_swallow := false         # eat the release that ends a swipe
+
+
+func _input(event: InputEvent) -> void:
+	if not visible:
+		return
+	if event is InputEventScreenTouch and (event as InputEventScreenTouch).index == 0:
+		var t := event as InputEventScreenTouch
+		if t.position.x < -5000.0:  # our own let-go, mirrored as a touch on desktop
+			return
+		if t.pressed:
+			_sw_scroll = _scroll_at(t.position)
+			_sw_from = t.position
+			_sw_active = false
+			_sw_vel = 0.0
+		else:
+			if _sw_active:
+				_sw_swallow = true
+				get_viewport().set_input_as_handled()
+			_sw_active = false
+			_sw_scroll = null
+	elif event is InputEventScreenDrag and (event as InputEventScreenDrag).index == 0 and _sw_scroll:
+		var d := event as InputEventScreenDrag
+		if not _sw_active:
+			var moved := d.position - _sw_from
+			if absf(moved.y) < SWIPE_START or absf(moved.y) < absf(moved.x):
+				return
+			_sw_active = true
+			# Let go of the button or slider the swipe started on, away from it, so it doesn't fire.
+			var up := InputEventMouseButton.new()
+			up.button_index = MOUSE_BUTTON_LEFT
+			up.pressed = false
+			up.position = Vector2(-10000, -10000)
+			up.global_position = up.position
+			Input.parse_input_event(up)
+		_sw_scroll.scroll_vertical -= int(round(d.relative.y))
+		_sw_vel = lerpf(_sw_vel, -d.velocity.y, 0.5)
+		get_viewport().set_input_as_handled()
+	elif event is InputEventMouseMotion and _sw_active:
+		get_viewport().set_input_as_handled()  # the finger's mirrored mouse moves
+	elif event is InputEventMouseButton and not (event as InputEventMouseButton).pressed and _sw_swallow \
+			and (event as InputEventMouseButton).position.x > -5000.0:
+		_sw_swallow = false
+		get_viewport().set_input_as_handled()
+
+
+func _process(dt: float) -> void:
+	_sw_swallow = false
+	if _sw_active or absf(_sw_vel) < 20.0 or _glide == null:
+		if not _sw_active:
+			_sw_vel = 0.0
+		return
+	_glide.scroll_vertical += int(round(_sw_vel * dt))
+	_sw_vel *= exp(-4.0 * dt)
+
+
+var _glide: ScrollContainer:
+	get:
+		return _sw_scroll if _sw_scroll else _last_scroll
+var _last_scroll: ScrollContainer
+
+
+## The visible vertical list under a screen point, if any.
+func _scroll_at(p: Vector2) -> ScrollContainer:
+	var scr: Control = _screens.get(_current)
+	if scr == null:
+		return null
+	for sc in scr.find_children("*", "ScrollContainer", true, false):
+		var s := sc as ScrollContainer
+		if s.is_visible_in_tree() and s.get_global_rect().has_point(p):
+			_last_scroll = s
+			return s
+	return null
+
+
+## Wraps a screen's content in a vertical scroller (named "Panel" for
+## _layout), with a margin so card shadows aren't clipped. Phones show less
+## height once the UI is scaled up, so tall screens scroll there.
+func _scroller(content: Control) -> ScrollContainer:
+	var sc := ScrollContainer.new()
+	sc.name = "Panel"
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	sc.scroll_deadzone = NO_DRAG
+	var m := MarginContainer.new()
+	m.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for side in ["left", "right", "top", "bottom"]:
+		m.add_theme_constant_override("margin_" + side, SCROLL_PAD)
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	m.add_child(content)
+	sc.add_child(m)
+	return sc

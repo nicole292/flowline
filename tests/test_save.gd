@@ -42,6 +42,17 @@ func test_old_version_save_still_loads() -> void:
 	t.check(s.best_by_mode["endless"] == 777, "old best score becomes the endless best")
 	t.check(s.missions.size() == 3, "missions created for old saves")
 	t.check(s.settings["controls"] == "buttons", "new settings get defaults")
+	s.from_dict({"settings": {"controls": "wheel", "camera": "hood"}})
+	t.check(s.settings["controls"] == "wheel", "the steering wheel setting is kept")
+	t.check(s.steer_for("vanta") == "wheel" and s.steer_for("raptor") == "buttons", "bikes ride with the arrows, not a wheel")
+	s.settings["controls"] = "tilt"
+	t.check(s.steer_for("raptor") == "tilt", "bikes can use GYRO")
+	s.settings["controls"] = "wheel"
+	t.check(s.settings["camera"] == "near", "a removed camera view falls back to the chase view")
+	t.check(SaveData.clean_plate("my car!99xyz") == "MY CAR99", "plates are capitals, 8 characters max")
+	s.from_dict({"plate": "nicky-1"})
+	t.check(s.plate == "NICKY-1", "the plate survives a save")
+	t.check(s.to_dict()["plate"] == "NICKY-1", "the plate is written to the save")
 
 
 func test_corrupt_file_is_ignored() -> void:

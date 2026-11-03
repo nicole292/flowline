@@ -155,9 +155,13 @@ func _build_environment() -> void:
 
 	sun = DirectionalLight3D.new()
 	sun.shadow_enabled = true
+	# Most of the shadow map goes to the first ~15 m around the player's car,
+	# so its shadow has clean edges instead of stair steps.
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
-	sun.directional_shadow_max_distance = 90.0
-	sun.shadow_blur = 1.2
+	sun.directional_shadow_max_distance = 60.0
+	sun.directional_shadow_split_1 = 0.25
+	sun.directional_shadow_blend_splits = true  # no visible pop at the 15 m seam
+	sun.shadow_blur = 1.5
 	add_child(sun)
 
 
@@ -411,6 +415,8 @@ func _build_trees() -> void:
 			var mmi := MultiMeshInstance3D.new()
 			mmi.multimesh = mm
 			mmi.extra_cull_margin = 20.0
+			# Billboards turn with the camera, so their shadows would swim.
+			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			node.add_child(mmi)
 			mms.append(mmi)
 		_chunks.append({"node": node, "index": -999999, "mms": mms})

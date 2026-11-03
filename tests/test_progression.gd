@@ -30,12 +30,20 @@ func test_upgrades_change_how_the_car_drives() -> void:
 
 
 func test_car_ladder_gets_faster_and_dearer() -> void:
-	var cars := CarCatalog.PLAYER_CARS
-	for i in range(1, cars.size()):
-		t.check(int(cars[i]["price"]) > int(cars[i - 1]["price"]), "%s costs more" % cars[i]["id"])
-		t.check(float(cars[i]["stats"]["top_speed"]) >= float(cars[i - 1]["stats"]["top_speed"]),
-				"%s is at least as fast" % cars[i]["id"])
-	t.check(int(cars[0]["price"]) == 0, "starter is free")
+	# Cars, then motorcycles: each is its own ladder, and the bikes come last.
+	var seen_bike := false
+	for kind in ["car", "bike"]:
+		var cars := CarCatalog.PLAYER_CARS.filter(func(c): return c.get("kind", "car") == kind)
+		for i in range(1, cars.size()):
+			t.check(int(cars[i]["price"]) > int(cars[i - 1]["price"]), "%s costs more" % cars[i]["id"])
+			t.check(float(cars[i]["stats"]["top_speed"]) >= float(cars[i - 1]["stats"]["top_speed"]),
+					"%s is at least as fast" % cars[i]["id"])
+	for c in CarCatalog.PLAYER_CARS:
+		if c.get("kind", "car") == "bike":
+			seen_bike = true
+		else:
+			t.check(not seen_bike, "%s (a car) comes before the motorcycles" % c["id"])
+	t.check(int(CarCatalog.PLAYER_CARS[0]["price"]) == 0, "starter is free")
 
 
 func test_upgrade_costs_rise() -> void:
@@ -55,6 +63,9 @@ func test_rewards_favour_two_way() -> void:
 	var a := Progression.run_rewards(10000.0, 3000.0, 10, "endless")
 	var b := Progression.run_rewards(10000.0, 3000.0, 10, "twoway")
 	t.check(b["cash"] > a["cash"], "two-way pays more")
+	var crashed := Progression.run_rewards(10000.0, 3000.0, 10, "endless", 2)
+	t.check(a["clean_bonus"] > 0 and crashed["clean_bonus"] == 0 and a["cash"] > crashed["cash"],
+			"a crash-free run pays a bonus")
 	t.check(a["cash"] > 800 and a["cash"] < 3000, "a decent run pays a sensible amount (%d)" % a["cash"])
 
 

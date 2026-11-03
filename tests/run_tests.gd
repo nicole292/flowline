@@ -4,9 +4,19 @@ extends SceneTree
 
 var failures: Array[String] = []
 var current := ""
+var _ran := false
 
 
-func _initialize() -> void:
+## Tests run on the first frame, once the root viewport is in the tree
+## (UI tests need a live viewport).
+func _process(_delta: float) -> bool:
+	if not _ran:
+		_ran = true
+		_run_all()
+	return false
+
+
+func _run_all() -> void:
 	var total := 0
 	var dir := DirAccess.open("res://tests")
 	var files := Array(dir.get_files()).filter(func(f): return f.begins_with("test_") and f.ends_with(".gd"))

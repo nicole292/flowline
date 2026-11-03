@@ -61,12 +61,20 @@ static func level_info(xp: int) -> Dictionary:
 	return {"level": level, "into": left, "need": xp_to_next(level)}
 
 
-## Cash and XP for a finished run. Two-way pays more, as in the genre.
-static func run_rewards(score: float, distance_m: float, near_misses: int, mode: String) -> Dictionary:
+const CLEAN_BONUS := 0.3   ## extra cash for a run of 1 km or more without a crash
+
+
+## Cash and XP for a finished run. Two-way pays more, as in the genre, and a
+## crash-free run pays a bonus on top.
+static func run_rewards(score: float, distance_m: float, near_misses: int, mode: String,
+		crashes := 0) -> Dictionary:
 	var mult: float = {"endless": 1.0, "twoway": 1.35, "time": 1.15}.get(mode, 1.0)
-	var cash := int((score / 12.0 + near_misses * 6 + distance_m / 1000.0 * 40.0) * mult)
+	var cash := int((score / 12.0 + near_misses * 6 + distance_m / 1000.0 * 30.0) * mult)
+	var clean := 0
+	if crashes == 0 and distance_m >= 1000.0:
+		clean = int(cash * CLEAN_BONUS)
 	var xp := int(score / 8.0 + distance_m / 10.0)
-	return {"cash": cash, "xp": xp}
+	return {"cash": cash + clean, "clean_bonus": clean, "xp": xp}
 
 
 static func level_up_reward(level: int) -> int:

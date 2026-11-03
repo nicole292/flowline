@@ -1,6 +1,7 @@
 class_name CarCatalog
 extends RefCounted
-## Static data for player cars and traffic vehicles.
+## Static data for player cars and traffic vehicles. Entries with
+## "kind": "bike" are motorcycles: narrow, quick to turn and to accelerate.
 ## Lengths/widths match tools/blender/build_cars.py. Speeds in m/s.
 
 const PLAYER_CARS := [
@@ -39,6 +40,17 @@ const PLAYER_CARS := [
 	 "blurb": "The wing is not for show. The fastest thing on the road.",
 	 "stats": {"top_speed": 88.0, "accel": 13.0, "brake_decel": 18.0,
 			   "lat_max": 8.4, "steer_response": 6.8, "lat_grip": 19.5}},
+	# ---- motorcycles: after all the cars in the garage
+	{"id": "nomad", "name": "Nomad 900", "class": "Roadster bike", "price": 18000, "kind": "bike",
+	 "paint": Color(0.20, 0.22, 0.20), "length": 2.0, "width": 0.8,
+	 "blurb": "Upright and light. Slips through gaps no car can.",
+	 "stats": {"top_speed": 61.0, "accel": 9.4, "brake_decel": 13.5,
+			   "lat_max": 8.4, "steer_response": 7.0, "lat_grip": 17.0}},
+	{"id": "raptor", "name": "Raptor RR", "class": "Sport bike", "price": 110000, "kind": "bike",
+	 "paint": Color(0.10, 0.45, 0.85), "length": 2.05, "width": 0.8,
+	 "blurb": "Full fairing, tucked in, and a lot of revs. Lane splitting at speed.",
+	 "stats": {"top_speed": 78.0, "accel": 12.0, "brake_decel": 15.5,
+			   "lat_max": 8.8, "steer_response": 7.2, "lat_grip": 18.5}},
 ]
 
 ## Garage paint palette: [name, colour].
@@ -65,6 +77,10 @@ const TRAFFIC := [
 	{"id": "t_van", "length": 5.25, "width": 2.00, "weight": 1.2, "speed_mul": 0.93},
 	{"id": "t_pickup", "length": 5.35, "width": 1.96, "weight": 1.1, "speed_mul": 0.97},
 	{"id": "t_truck", "length": 7.60, "width": 2.30, "weight": 0.9, "speed_mul": 0.84},
+	{"id": "t_bus", "length": 12.0, "width": 2.50, "weight": 0.35, "speed_mul": 0.82},
+	{"id": "t_moto", "length": 2.0, "width": 0.80, "weight": 0.6, "speed_mul": 1.04},
+	# Only ever parked at crash sites (weight 0: never picked for traffic).
+	{"id": "t_police", "length": 4.65, "width": 1.80, "weight": 0.0, "speed_mul": 1.0},
 	{"id": "meridian", "length": 4.86, "width": 1.89, "weight": 0.4, "speed_mul": 1.05},
 	{"id": "kestrel", "length": 4.06, "width": 1.82, "weight": 0.3, "speed_mul": 1.05},
 ]
@@ -91,6 +107,10 @@ static func player_car(id: String) -> Dictionary:
 		if c["id"] == id:
 			return c
 	return PLAYER_CARS[0]
+
+
+static func is_bike(id: String) -> bool:
+	return player_car(id).get("kind", "car") == "bike"
 
 
 static func index_of(id: String) -> int:

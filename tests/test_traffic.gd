@@ -184,3 +184,63 @@ func test_two_way_traffic() -> void:
 	t.check(bad == 0, "oncoming traffic moves towards the player and never overlaps (%d)" % bad)
 	t.check(wrong_lane == 0, "cars never drift into the other direction's lanes")
 	t.check(oncoming_passes > 10, "oncoming cars are passed (%d)" % oncoming_passes)
+
+
+func test_horn_moves_car_ahead_over() -> void:
+	var s := _sim()
+	var ahead := s.spawn(2, -40.0, 0)
+	s.spawn(2, -150.0, 0)
+	var moved := s.honk(s.lane_x(2), 0.0)
+	t.check(moved == ahead, "the nearest car ahead in my lane reacts")
+	t.check(ahead.target_lane == 3, "it prefers the slower lane")
+	for i in 240:
+		s.update(1.0 / 60.0, -ahead.speed * i / 60.0, s.lane_x(2), ahead.speed, 4.5, 1.9, 0.0)
+	t.check(ahead.lane == 3, "it has moved over after a few seconds")
+
+
+func test_horn_does_nothing_when_boxed_in() -> void:
+	var s := _sim()
+	s.spawn(1, -40.0, 0)
+	s.spawn(2, -40.0, 0)
+	s.spawn(3, -42.0, 0)
+	t.check(s.honk(s.lane_x(2), 0.0) == null, "no free lane: nobody moves")
+	t.check(s.honk(s.lane_x(2), -100.0) == null, "nobody ahead within reach")
+
+
+func test_crash_site_blocks_one_lane_and_traffic_goes_around() -> void:
+	var s := _sim(5)
+	s.crash_first = 100.0
+	s.crash_spacing = Vector2(99999.0, 99999.0)
+	var pz := 0.0
+	s.populate(pz, 0.0)
+	var wrecks: Array = []
+	var overlaps := 0
+	var passed_wreck := 0
+	for i in 2400:  # 40 s with the player cruising at 25 m/s
+		pz -= 25.0 / 60.0
+		s.update(1.0 / 60.0, pz, s.lane_x(0) if i < 600 else s.lane_x(3), 25.0, 4.5, 1.9, 100.0 + i * 25.0 / 60.0)
+		for a in s.agents:
+			if a.wreck and not wrecks.has(a):
+				wrecks.append(a)
+		for w in wrecks:
+			if not s.agents.has(w):
+				continue
+			for a in s.agents:
+				if a == w or a.wreck:
+					continue
+				if absf(a.x - w.x) < (a.width + w.width) * 0.5 - 0.3 and absf(a.z - w.z) < (a.length + w.length) * 0.5:
+					overlaps += 1
+				if a.occupies(w.lane) == false and absf(a.z - w.z) < 1.0:
+					passed_wreck += 1
+	t.check(not wrecks.is_empty(), "a crash site appears once the run is far enough along")
+	var open := 0
+	for w in wrecks:
+		t.check(w.speed == 0.0 and w.dir < 0, "a wreck stands still")
+	if not wrecks.is_empty():
+		var w: TrafficSim.Agent = wrecks[0]
+		for l in s.lanes:
+			if not s.wreck_ahead(l, w.z + 1.0, 30.0):
+				open += 1
+	t.check(open >= 1, "the crash site leaves a lane open")
+	t.check(overlaps == 0, "no traffic drives through a wreck (%d overlaps)" % overlaps)
+	t.check(passed_wreck > 0, "traffic passes the crash site in the next lane")

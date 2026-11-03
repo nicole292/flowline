@@ -1,12 +1,15 @@
 class_name AudioDirector
 extends Node
 ## All game audio: layered engine with a simulated gearbox, wind, barrier
-## scrape, near-miss whooshes (panned to the passed car), chimes, crash.
+## scrape, near-miss whooshes (panned to the passed car), chimes, crash,
+## horn and a quiet looping background track.
 ## Uses three buses (Music, Sfx, Engine) so settings can scale each one.
 
 const GEARS := [0.0, 0.17, 0.31, 0.46, 0.62, 0.80, 1.01]
 
 var _engine_low: AudioStreamPlayer
+## Motorcycle: the engine revs far higher and there is no cabin, so more wind.
+var bike := false
 var _engine_high: AudioStreamPlayer
 var _wind: AudioStreamPlayer
 var _scrape: AudioStreamPlayer
@@ -14,6 +17,9 @@ var _ui: AudioStreamPlayer
 var _chime: AudioStreamPlayer
 var _flow: AudioStreamPlayer
 var _crash: AudioStreamPlayer
+var _horn: AudioStreamPlayer
+var _music: AudioStreamPlayer
+var _music_db := -8.0      ## target level; dipped during crashes and pauses
 var _whooshes: Array[AudioStreamPlayer3D] = []
 var _whoosh_i := 0
 var _rpm := 0.3
@@ -38,6 +44,11 @@ func _ready() -> void:
 	_chime = _player("near_0", "Sfx")
 	_flow = _player("flow_start", "Sfx")
 	_crash = _player("crash", "Sfx")
+	_horn = _player("horn", "Sfx", true)
+	_horn.volume_db = -7.0
+	_music = _player("music", "Music", true)
+	_music.volume_db = -40.0
+	_music.play()
 	for i in 4:
 		var p := AudioStreamPlayer3D.new()
 		p.stream = _stream("whoosh")
@@ -85,8 +96,37 @@ func start_engine() -> void:
 
 
 func stop_engine() -> void:
-	for p in [_engine_low, _engine_high, _wind, _scrape]:
+	for p in [_engine_low, _engine_high, _wind, _scrape, _horn]:
 		p.stop()
+
+
+func _process(dt: float) -> void:
+	# Music fades towards its target so dips and returns are smooth.
+	_music.volume_db = move_toward(_music.volume_db, _music_db, dt * 18.0)
+
+
+## Freezes game sounds for the pause menu; the music keeps playing, quieter.
+func set_paused(on: bool) -> void:
+	for p in get_children():
+		if p != _music and (p is AudioStreamPlayer or p is AudioStreamPlayer3D):
+			p.stream_paused = on
+	duck_music(on)
+
+
+## Quieter music under a crash or the pause menu.
+func duck_music(on: bool) -> void:
+	_music_db = -17.0 if on else -8.0
+
+
+func gear() -> int:
+	return _gear
+
+
+func horn(on: bool) -> void:
+	if on and not _horn.playing:
+		_horn.play()
+	elif not on:
+		_horn.stop()
 
 
 ## Engine RPM from speed through a 6-speed box; 0..1 within the rev range.
@@ -106,14 +146,16 @@ func update_engine(dt: float, speed: float, top_speed: float, throttle: float, s
 		_gear -= 1
 	var target := rpm_for(sf, _gear)
 	_rpm = lerpf(_rpm, target, 1.0 - exp(-9.0 * dt))
-	var fire_hz := lerpf(38.0, 200.0, _rpm)
-	_engine_low.pitch_scale = clampf(fire_hz / 60.0, 0.3, 4.0)
-	_engine_high.pitch_scale = clampf(fire_hz / 120.0, 0.3, 4.0)
-	var hi_mix := smoothstep(0.3, 0.85, _rpm)
+	# Each layer is only pitched over a modest range (big pitch shifts make
+	# an engine sound squeaky); the high-rev layer takes over in the middle.
+	var fire_hz := lerpf(70.0, 300.0, _rpm) if bike else lerpf(40.0, 200.0, _rpm)
+	_engine_low.pitch_scale = clampf(fire_hz / 60.0, 0.6, 2.0)
+	_engine_high.pitch_scale = clampf(fire_hz / 140.0, 0.6, 2.0 if bike else 1.6)
+	var hi_mix := smoothstep(80.0, 125.0, fire_hz)
 	var load_db := 0.0 if throttle > 0.5 else -5.0
 	_engine_low.volume_db = linear_to_db(lerpf(1.0, 0.35, hi_mix)) - 4.0 + load_db
-	_engine_high.volume_db = linear_to_db(maxf(hi_mix, 0.02)) - 6.0 + load_db
-	_wind.volume_db = linear_to_db(clampf(sf * sf * 1.2, 0.001, 1.0)) - 3.0
+	_engine_high.volume_db = linear_to_db(maxf(hi_mix, 0.02)) - 8.0 + load_db
+	_wind.volume_db = linear_to_db(clampf(sf * sf * 1.2, 0.001, 1.0)) - (0.0 if bike else 3.0)
 	_wind.pitch_scale = 0.8 + sf * 0.45
 	_scrape_t = 0.25 if scraping else maxf(0.0, _scrape_t - dt)
 	if _scrape_t > 0.0 and not _scrape.playing:
@@ -145,6 +187,7 @@ func impact() -> void:
 
 func crash() -> void:
 	_crash.play()
+	_horn.stop()
 	_engine_high.stop()
 	_scrape.stop()
 

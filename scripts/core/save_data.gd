@@ -4,7 +4,7 @@ extends RefCounted
 ## Writes go to a temp file first, then replace the save, so a crash or
 ## kill mid-write can never leave a corrupted save behind.
 
-const VERSION := 2
+const VERSION := 3
 const STARTER := "vanta"
 const MODES := ["endless", "twoway", "time"]
 
@@ -19,6 +19,7 @@ var total_near_misses := 0
 var total_overtakes := 0
 var runs := 0
 var selected_car := STARTER
+var plate := "FLOWLINE"   ## the player's number plate text, see clean_plate()
 var owned_cars: Array[String] = [STARTER]
 var upgrades := {}   # car id -> {speed, accel, handling, brakes}
 var paints := {}     # car id -> paint index
@@ -32,7 +33,9 @@ var daily_streak := 0
 var last_mode := "endless"
 var last_env := "day"
 var settings := {"music": 0.8, "sfx": 1.0, "engine": 1.0, "steer_sensitivity": 1.0,
-		"controls": "buttons", "camera": "near", "quality": "high", "units": "kmh", "crashes": "keep"}
+		"controls": "buttons", "gas": "pedal", "camera": "near", "quality": "high", "units": "kmh",
+		"theme": "",   # "" = follow the device until the player picks
+		"skin": "medium"}  # skin tone of the driver's hands in the cockpit view
 
 
 func to_dict() -> Dictionary:
@@ -40,7 +43,7 @@ func to_dict() -> Dictionary:
 		"version": VERSION, "best_score": best_score, "best_distance": best_distance,
 		"best_by_mode": best_by_mode, "cash": cash, "xp": xp, "total_distance": total_distance,
 		"total_near_misses": total_near_misses, "total_overtakes": total_overtakes, "runs": runs,
-		"selected_car": selected_car, "owned_cars": owned_cars, "upgrades": upgrades,
+		"selected_car": selected_car, "plate": plate, "owned_cars": owned_cars, "upgrades": upgrades,
 		"paints": paints, "rims": rims, "owned_paints": owned_paints, "owned_rims": owned_rims,
 		"missions": missions, "mission_seq": mission_seq, "last_daily": last_daily,
 		"daily_streak": daily_streak, "last_mode": last_mode, "last_env": last_env, "settings": settings,
@@ -62,6 +65,7 @@ func from_dict(d: Dictionary) -> void:
 	total_overtakes = int(d.get("total_overtakes", 0))
 	runs = int(d.get("runs", 0))
 	selected_car = str(d.get("selected_car", STARTER))
+	plate = clean_plate(str(d.get("plate", "FLOWLINE")))
 	owned_cars.clear()
 	for c in d.get("owned_cars", [STARTER]):
 		if CarCatalog.has_player_car(str(c)):
@@ -91,7 +95,28 @@ func from_dict(d: Dictionary) -> void:
 		for k in settings:
 			if (s as Dictionary).has(k):
 				settings[k] = s[k] if settings[k] is String else float(s[k])
+	# Views that were cut (far, bumper, hood) fall back to the chase view.
+	settings["camera"] = {"far": "near", "bumper": "near", "hood": "near"}.get(settings["camera"], settings["camera"])
 	ensure_missions()
+
+
+## Steering used for a vehicle: motorcycles have no steering wheel, so a
+## saved WHEEL choice rides a bike with the arrows (cars keep the wheel).
+func steer_for(car_id: String) -> String:
+	var mode: String = settings.get("controls", "buttons")
+	return "buttons" if mode == "wheel" and CarCatalog.is_bike(car_id) else mode
+
+
+## Plate text as stored and shown: capitals, digits, spaces and dashes, up
+## to 8 characters.
+static func clean_plate(text: String) -> String:
+	var out := ""
+	for ch in text.to_upper():
+		if out.length() >= 8:
+			break
+		if (ch >= "A" and ch <= "Z") or (ch >= "0" and ch <= "9") or ch == " " or ch == "-":
+			out += ch
+	return out
 
 
 func ensure_missions() -> void:

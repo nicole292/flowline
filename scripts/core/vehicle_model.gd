@@ -2,7 +2,9 @@ class_name VehicleModel
 extends RefCounted
 ## Arcade driving model for a straight highway.
 ##
-## Longitudinal: engine force that fades towards top speed, brakes, drag.
+## Longitudinal: engine force that is traction-limited at low speed and
+## power-limited above `power_speed` (so it falls off like a real car's),
+## fading to zero at top speed; brakes; engine braking and drag off throttle.
 ## Lateral: steering sets a target sideways velocity; the car reaches it
 ## through a response rate and a grip limit, which is what gives lane changes
 ## weight. Visual yaw/roll/pitch are derived from these values by the view.
@@ -14,6 +16,7 @@ var lat_max := 7.0          ## m/s sideways at full lock
 var steer_response := 5.0   ## 1/s, how fast lateral velocity follows input
 var lat_grip := 15.0        ## m/s², max change of lateral velocity
 var min_speed := 11.0       ## the car never fully stops on the highway
+var power_speed := 26.0     ## m/s where full acceleration starts to fall off
 
 var speed := 20.0
 var x := 0.0
@@ -35,8 +38,8 @@ func step(dt: float, throttle: float, brake: float, steer: float) -> void:
 		a = -brake_decel * brake
 	else:
 		var r := speed / top_speed
-		var drive := accel * (1.0 - r * r) * throttle
-		var drag := (0.35 + 0.00025 * speed * speed) * (1.0 - throttle)
+		var drive := accel * minf(1.0, power_speed / maxf(speed, 1.0)) * (1.0 - r * r) * throttle
+		var drag := (0.6 + 0.0003 * speed * speed) * (1.0 - throttle)
 		a = drive - drag
 	speed = clampf(speed + a * dt, min_speed, top_speed)
 	long_accel = (speed - prev_speed) / dt
