@@ -8,6 +8,7 @@ extends Node
 const GEARS := [0.0, 0.17, 0.31, 0.46, 0.62, 0.80, 1.01]
 
 var _engine_low: AudioStreamPlayer
+var _load_db := 0.0
 ## Motorcycle: the engine revs far higher and there is no cabin, so more wind.
 var bike := false
 var _engine_high: AudioStreamPlayer
@@ -152,7 +153,9 @@ func update_engine(dt: float, speed: float, top_speed: float, throttle: float, s
 	_engine_low.pitch_scale = clampf(fire_hz / 60.0, 0.6, 2.0)
 	_engine_high.pitch_scale = clampf(fire_hz / 140.0, 0.6, 2.0 if bike else 1.6)
 	var hi_mix := smoothstep(80.0, 125.0, fire_hz)
-	var load_db := 0.0 if throttle > 0.5 else -5.0
+	# On and off the gas the engine gets louder or softer over a moment, not in one step.
+	_load_db = move_toward(_load_db, 0.0 if throttle > 0.5 else -5.0, dt * 20.0)
+	var load_db := _load_db
 	_engine_low.volume_db = linear_to_db(lerpf(1.0, 0.35, hi_mix)) - 4.0 + load_db
 	_engine_high.volume_db = linear_to_db(maxf(hi_mix, 0.02)) - 8.0 + load_db
 	_wind.volume_db = linear_to_db(clampf(sf * sf * 1.2, 0.001, 1.0)) - (0.0 if bike else 3.0)

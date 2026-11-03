@@ -70,7 +70,7 @@ def seam(samples, fade=0.05):
     return body
 
 
-def car_engine(fire_hz, seconds, resonances, cutoff, seed, cyl=(1.0, 0.86, 0.95, 0.82)):
+def car_engine(fire_hz, seconds, resonances, cutoff, seed, cyl=(1.0, 0.86, 0.95, 0.82), rumble=0.35):
     """Engine as an exhaust note: one pulse per cylinder firing, each ringing
     through a few damped exhaust resonances (`resonances`: Hz, decay/s, gain),
     with a fixed per-cylinder level pattern for the burble of a 4-cylinder.
@@ -97,7 +97,7 @@ def car_engine(fire_hz, seconds, resonances, cutoff, seed, cyl=(1.0, 0.86, 0.95,
     lp2 = OnePole(cutoff)
     res = []
     for i in range(2 * n):
-        x = out[i % n] + 0.35 * rl(noise[i % n])
+        x = out[i % n] + rumble * rl(noise[i % n])
         y = lp2(lp(x))
         if i >= n:
             res.append(y)
@@ -324,10 +324,12 @@ def main():
         # crossfades and pitches them by RPM. 60 Hz firing ~ 1800 rpm (4-cyl).
         # Engine layers: a deep idle/low-rev note and a tighter high-rev note.
         # The game pitches each only within about 0.6x-1.8x and crossfades.
-        "engine_low": lambda: (car_engine(60, 1.0, [(140, 70, 1.0), (330, 140, 0.45), (720, 300, 0.12)],
-                                          900, 1), 0.8),
-        "engine_high": lambda: (car_engine(140, 1.0, [(260, 110, 1.0), (560, 200, 0.4), (1150, 380, 0.1)],
-                                           1600, 2), 0.8),
+        # Long-ringing pulses and nearly even cylinders: shorter rings and a
+        # strong per-cylinder pattern made a rattle at low revs.
+        "engine_low": lambda: (car_engine(60, 1.0, [(140, 28, 1.0), (330, 60, 0.4), (720, 160, 0.08)],
+                                          800, 1, cyl=(1.0, 0.96, 0.99, 0.95), rumble=0.15), 0.8),
+        "engine_high": lambda: (car_engine(140, 1.0, [(260, 70, 1.0), (560, 140, 0.4), (1150, 300, 0.08)],
+                                           1500, 2, cyl=(1.0, 0.95, 0.98, 0.94), rumble=0.2), 0.8),
         "wind": lambda: (noise_loop(2.0, 70, 520, 3, flutter=0.15, flutter_hz=0.5), 0.6),
         "scrape": lambda: (noise_loop(1.0, 600, 2200, 5, flutter=0.3, flutter_hz=8), 0.55),
         "whoosh": lambda: (whoosh(), 0.85),
