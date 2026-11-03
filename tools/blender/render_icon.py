@@ -78,7 +78,7 @@ def main():
     scene = setup()
     # glTF import: car faces Blender +Y again
     # rear three-quarter view: the light bar is the car's signature
-    shoot(scene, os.path.join(OUT, "icon_raw.png"), (1024, 1024), (-3.3, -4.5, 1.15), (-0.1, -0.5, 0.62), 42)
+    shoot(scene, os.path.join(OUT, "icon_raw.png"), (1024, 1024), (-3.3, -4.5, 1.15), (0.15, -0.1, 0.55), 30)  # room round the car for the rounded icon mask
 
 
 main()
