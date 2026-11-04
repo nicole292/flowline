@@ -25,6 +25,8 @@ theme/custom_font="res://assets/fonts/BarlowSemiCondensed-SemiBold.ttf"
 [input_devices]
 
 pointing/emulate_touch_from_mouse=true
+sensors/enable_accelerometer=true
+sensors/enable_gravity=true
 
 [rendering]
 
