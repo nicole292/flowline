@@ -226,6 +226,7 @@ func _apply_settings() -> void:
 	hud.mph = save.settings.get("units", "kmh") == "mph"
 	hud.set_controls(save.steer_for(save.selected_car), save.settings.get("gas", "pedal") == "auto")
 	cockpit.set_skin(save.settings.get("skin", "medium"))
+	_tilt.invert = save.settings.get("gyro", "normal") == "invert"
 	_apply_camera()
 	if OS.has_feature("web") and save.settings.get("controls", "buttons") == "tilt":
 		JavaScriptBridge.eval("window.__wantMotion = true")  # lets the page ask iOS for motion access
@@ -709,7 +710,11 @@ func _gravity_on_screen() -> Vector2:
 	if OS.has_feature("web"):
 		var parts := str(JavaScriptBridge.eval("window.__grav || ''")).split(",")
 		return Vector2(float(parts[0]), float(parts[1])) if parts.size() == 2 else Vector2.ZERO
-	var g := Input.get_accelerometer()
+	# The fused gravity sensor ignores bumps and hand shake; fall back to the
+	# raw accelerometer on phones without one.
+	var g := Input.get_gravity()
+	if g.length() < 0.01:
+		g = Input.get_accelerometer()
 	return Vector2(g.x, g.y)
 
 
@@ -724,7 +729,7 @@ func _tilt_steer() -> float:
 func _check_motion(dt: float) -> void:
 	if save.settings.get("controls", "buttons") != "tilt" or _args.has("autopilot"):
 		return
-	_no_motion_t = 0.0 if _last_gravity.length() >= 1.0 else _no_motion_t + dt
+	_no_motion_t = 0.0 if _last_gravity.length() >= 0.05 else _no_motion_t + dt  # m/s² or g
 	if _no_motion_t > 3.0:
 		save.settings["controls"] = "buttons"
 		save.save_to_disk()

@@ -873,6 +873,8 @@ func _build_settings() -> Control:
 	_choice_row(ctl, "Hands", "skin", [["LIGHT", "light"], ["MEDIUM", "medium"], ["TAN", "tan"],
 			["BROWN", "brown"], ["DARK", "dark"]])
 	_setting_row(ctl, "Sensitivity").add_child(_slider("steer_sensitivity", 0.5, 1.5))
+	# If a phone reports its tilt mirrored, GYRO steers the wrong way: flip it here.
+	_choice_row(ctl, "Gyro", "gyro", [["NORMAL", "normal"], ["INVERTED", "invert"]])
 	for c in cols.get_children():
 		(c as Control).size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	# Full-width cards: the camera views, then the three volumes side by side.

@@ -35,7 +35,7 @@ var last_env := "day"
 var settings := {"music": 0.8, "sfx": 1.0, "engine": 1.0, "steer_sensitivity": 1.0,
 		"controls": "buttons", "gas": "pedal", "camera": "near", "quality": "high", "units": "kmh",
 		"theme": "",   # "" = follow the device until the player picks
-		"skin": "medium"}  # skin tone of the driver's hands in the cockpit view
+		"skin": "medium", "gyro": "normal"}  # skin tone of the driver's hands in the cockpit view
 
 
 func to_dict() -> Dictionary:
