@@ -51,8 +51,57 @@ workflows:
     artifacts:
       - build/ios/ipa/*.ipa
 
-  # A signed TestFlight / App Store workflow can be added like Bubblop's
-  # "ios-release" once the Apple Developer account exists: it needs an App
-  # Store Connect API key integration, ios_signing with bundle_identifier
-  # com.elishakov.flowline, the real Team ID in the "iOS" preset
-  # (application/app_store_team_id), and xcode-project build-ipa.
+  # Signed build, uploaded to App Store Connect / TestFlight. Needs the App
+  # Store Connect API key added in Codemagic as an integration named
+  # "Elishakov ASC key" (one key works for every app, Bubblop too). The Team ID
+  # is read from the signing profile, and the build number is Codemagic's.
+  ios-release:
+    name: iOS release (TestFlight)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: Elishakov ASC key
+    environment:
+      xcode: latest
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.elishakov.flowline
+      vars:
+        GODOT_VERSION: "4.7.2"
+    scripts:
+      - name: Install Godot and its export templates
+        script: |
+          set -e
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+          curl -sSL -o godot.zip "$base/Godot_v${GODOT_VERSION}-stable_macos.universal.zip"
+          unzip -q godot.zip
+          curl -sSL -o templates.tpz "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          unzip -q templates.tpz
+          dest="$HOME/Library/Application Support/Godot/export_templates/${GODOT_VERSION}.stable"
+          mkdir -p "$dest"
+          mv templates/* "$dest/"
+          echo "GODOT=$PWD/Godot.app/Contents/MacOS/Godot" >> $CM_ENV
+      - name: Put the Team ID and build number in the iOS preset
+        script: |
+          set -e
+          profile=$(ls "$HOME/Library/MobileDevice/Provisioning Profiles/"*.mobileprovision | head -1)
+          team=$(security cms -D -i "$profile" | plutil -extract TeamIdentifier.0 raw -)
+          sed -i '' "s/AAAAAAAAAA/$team/" export_presets.cfg
+          sed -i '' "s/^application\/version=\".*\"/application\/version=\"$BUILD_NUMBER\"/" export_presets.cfg
+          echo "Team $team, build $BUILD_NUMBER"
+      - name: Export the Xcode project
+        script: |
+          $GODOT --headless --path . --import || true
+          mkdir -p build/ios
+          $GODOT --headless --path . --export-release "iOS" build/ios/FLOWLINE.ipa
+          test -d build/ios/FLOWLINE.xcodeproj
+      - name: Use the App Store signing profile
+        script: xcode-project use-profiles --project build/ios/FLOWLINE.xcodeproj
+      - name: Build signed .ipa
+        script: xcode-project build-ipa --project build/ios/FLOWLINE.xcodeproj --scheme FLOWLINE
+    artifacts:
+      - build/ios/ipa/*.ipa
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: false  # internal testers need no Beta review

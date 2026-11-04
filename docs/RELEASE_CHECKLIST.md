@@ -16,7 +16,7 @@ Bubblop's checklist; the Play Console steps are identical (see
 - [x] Name: FLOWLINE: Highway Racer, package id `com.elishakov.flowline`
 - [ ] Back up the signing key folder `C:\dev\flowline_keys` off this PC (USB stick or Google Drive).
       Losing it means you can never update the app.
-- [ ] Create the GitHub repo and switch on Pages, so the privacy URL works (needs your OK to make it public).
+- [x] GitHub repo nicole292/flowline (public) with Pages; privacy page live
 
 ## Real-phone checks (Android)
 - [ ] Install the build from the internal testing track and play 10 minutes
@@ -35,7 +35,16 @@ Bubblop's checklist; the Play Console steps are identical (see
 - [ ] Apply for production access, then production release sent for review
 - [ ] **Live on Google Play**
 
-## App Store (later)
-- [ ] Apple Developer Program ($99), same as Bubblop
-- [ ] iOS export from Godot needs a Mac or Codemagic; not set up yet
-- [ ] Gyro steering checked on a real iPhone (only possible in the native app)
+## App Store (texts in `docs/store/apple.md`)
+- [ ] Two-factor authentication on your Apple ID
+- [ ] Apple Developer Program, Individual, $99/year, approved (covers Bubblop too)
+- [ ] Agreements: accept the Free Apps agreement; EU trader status declared
+- [ ] Identifier `com.elishakov.flowline` registered (no extra capabilities)
+- [ ] App created in App Store Connect; App Information, Privacy, Pricing filled in
+- [ ] App Store Connect API key (Team key, App Manager) created; `.p8`, Issuer ID, Key ID saved
+- [ ] Codemagic: integration "Elishakov ASC key" added; repo `flowline` added
+- [ ] Codemagic "iOS release (TestFlight)" build succeeded
+- [ ] Played the TestFlight build on the iPhone (gyro steering, sound, smoothness)
+- [ ] Version page filled in, build selected, everything saved (draft)
+- [ ] Submitted for review
+- [ ] Approved, then Release This Version
