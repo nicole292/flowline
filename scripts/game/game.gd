@@ -226,7 +226,10 @@ func _apply_settings() -> void:
 	hud.mph = save.settings.get("units", "kmh") == "mph"
 	hud.set_controls(save.steer_for(save.selected_car), save.settings.get("gas", "pedal") == "auto")
 	cockpit.set_skin(save.settings.get("skin", "medium"))
-	_tilt.invert = save.settings.get("gyro", "normal") == "invert"
+	# iPhones report the tilt mirrored compared with Android and browsers
+	# (playtest: turning right steered left), so iOS starts flipped. The
+	# Gyro setting flips it again for any phone that still gets it wrong.
+	_tilt.invert = (save.settings.get("gyro", "normal") == "invert") != (OS.get_name() == "iOS")
 	_apply_camera()
 	if OS.has_feature("web") and save.settings.get("controls", "buttons") == "tilt":
 		JavaScriptBridge.eval("window.__wantMotion = true")  # lets the page ask iOS for motion access
