@@ -69,14 +69,40 @@ traffic,car,driving,near miss,motorbike,speed,arcade,offline,endless,cockpit,ove
 | Marketing URL | https://nicole292.github.io/flowline/ |
 | Copyright | 2026 Elishakov Studio |
 | iPhone 6.9" screenshots | `iphone-69-1.png` … `iphone-69-6.png` (2868 × 1320, landscape) |
-| iPad screenshots | not needed (the game is iPhone only) |
+| iPad 13" screenshots | `ipad-13-1.png` … `ipad-13-6.png` (2732 × 2048, landscape). Needed since build 17: the game now runs full-screen on iPad |
 | Build | the one Codemagic uploaded ("iOS release (TestFlight)") |
 
 **App Review Information**
 - Sign-in required: No
 - Contact: your name, phone and elishakov.studio@gmail.com
-- Notes:
-  No account or sign-in. Tap PLAY to drive. Steer with the on-screen wheel (or arrows, or gyro under Settings), gas and brake pedals on the right. Bumping traffic dents the car but doesn't end the run; to finish, tap Pause, then End run. The game works offline and collects no data.
+- Notes (rewritten 2026-11-05 after the Guideline 2.1 "Information Needed" reply; replace the link placeholder):
+
+```
+SCREEN RECORDING (physical iPhone 13 Pro, iOS 26.7.2; recording starts at app launch):
+<paste video link here>
+
+1. PURPOSE AND AUDIENCE
+FLOWLINE: Highway Racer is an offline arcade driving game for casual players aged 4+ (racing fans, short play sessions). You weave a car or motorbike through highway traffic; close passes fill a "Flow" meter that doubles your points. It offers quick, skill-based entertainment that works anywhere without a connection.
+
+2. HOW TO USE THE APP
+No account, login or setup is needed. Launch the app and tap PLAY.
+- Steering: on-screen steering wheel, arrow buttons, or GYRO (tilt the phone); choose it on the mode screen or in Settings. Gas and brake pedals are on screen.
+- Bumping into traffic dents the car but does not end the run. To finish a run tap Pause, then End run, to see the results.
+- Coins earned while driving are spent in the Garage on cars, motorbikes, upgrades, paint, rims and a custom number plate.
+- Modes: Endless, Two-way, Time attack. Cameras: chase, top, cockpit.
+There is no account system (so no account deletion is needed), no user-generated content, no chat, no ads and no in-app purchases. All content is free and unlocked by playing.
+
+3. EXTERNAL SERVICES
+None. The app makes no network requests and uses no third-party SDKs, analytics, ads, authentication, payments or AI services. It is built with the open-source Godot Engine. Progress is saved only on the device. The only device permission used is the motion sensor, for optional gyro steering.
+
+4. REGIONAL DIFFERENCES
+None. The app works the same in all regions. It is in English only.
+
+5. REGULATED INDUSTRY / THIRD-PARTY MATERIAL
+Not a regulated industry. The game contains no licensed brands, real car makes or protected third-party material. All cars and bikes are original models. Bundled free assets: Poly Haven sky and trees (CC0), ambientCG textures (CC0), MakeHuman base body (CC0), Barlow font (SIL Open Font License).
+```
+
+- Screen recording for review: on the iPhone (latest iOS, TestFlight build), Control Center screen recording. Start on the home screen, tap the icon, PLAY, drive ~40 s with near misses and one bump, Pause → End run, Garage purchase with earned coins, switch to GYRO and drive a few seconds. Upload unlisted (YouTube) or Drive "anyone with the link".
 
 **Version release**: Manually release this version (you choose the day after approval).
 
