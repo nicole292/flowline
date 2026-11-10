@@ -104,6 +104,16 @@ def car_engine(fire_hz, seconds, resonances, cutoff, seed, cyl=(1.0, 0.86, 0.95,
     return res
 
 
+def sports_engine(fire_hz, resonances, cutoff, cyl, drive):
+    """Sports-car exhaust: the pulse engine above with brighter, longer
+    overtones, no noise at all, and soft saturation for the hard-edged
+    rasp of a tuned V8 (tanh adds odd harmonics, like a loud exhaust)."""
+    x = car_engine(fire_hz, 1.0, resonances, cutoff, 7, cyl=cyl, rumble=0.0)
+    peak = max(1e-6, max(abs(v) for v in x))
+    k = math.tanh(drive)
+    return [math.tanh(drive * v / peak) / k for v in x]
+
+
 def noise_loop(seconds, lo, hi, seed, flutter=0.0, flutter_hz=0.0):
     rng = random.Random(seed)
     bp = bandpass(lo, hi)
@@ -326,11 +336,17 @@ def main():
         # The game pitches each only within about 0.6x-1.8x and crossfades.
         # Long-ringing pulses and nearly even cylinders: shorter rings and a
         # strong per-cylinder pattern made a rattle at low revs.
-        "engine_low": lambda: (car_engine(60, 1.0, [(140, 28, 1.0), (330, 60, 0.4), (720, 160, 0.08)],
-                                          800, 1, cyl=(1.0, 0.96, 0.99, 0.95), rumble=0.15), 0.8),
-        "engine_high": lambda: (car_engine(140, 1.0, [(260, 70, 1.0), (560, 140, 0.4), (1150, 300, 0.08)],
-                                           1500, 2, cyl=(1.0, 0.95, 0.98, 0.94), rumble=0.2), 0.8),
-        "wind": lambda: (noise_loop(2.0, 70, 520, 3, flutter=0.15, flutter_hz=0.5), 0.6),
+        # Sports-car engine (V8): the game crossfades and pitches the two
+        # layers by RPM (each only ~0.6x-2x). The low layer keeps a mild
+        # cross-plane burble (uneven cylinder pattern); the high layer is an
+        # even, hard-edged howl. No wind or noise layer: playtest said the
+        # hiss sounded like wind, not an engine.
+        "engine_low": lambda: (sports_engine(80, [(150, 20, 1.0), (300, 34, 0.7), (620, 80, 0.35),
+                                                  (1250, 200, 0.14), (2500, 480, 0.05)], 2600,
+                                             (1.0, 0.78, 0.92, 0.74, 0.97, 0.8, 0.88, 0.76), 2.2), 0.8),
+        "engine_high": lambda: (sports_engine(220, [(330, 40, 1.0), (660, 70, 0.6), (1320, 150, 0.32),
+                                                    (2640, 330, 0.12), (3960, 700, 0.04)], 5200,
+                                              (1.0, 0.97, 0.99, 0.96), 2.6), 0.8),
         "scrape": lambda: (noise_loop(1.0, 600, 2200, 5, flutter=0.3, flutter_hz=8), 0.55),
         "whoosh": lambda: (whoosh(), 0.85),
         "crash": lambda: (crash(), 0.95),
@@ -353,4 +369,5 @@ def main():
         write("music", music(), 0.8, rate=MRATE)
 
 
-main()
+if __name__ == "__main__":
+    main()
