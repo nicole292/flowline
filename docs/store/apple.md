@@ -99,7 +99,7 @@ None. The app makes no network requests and uses no third-party SDKs, analytics,
 None. The app works the same in all regions. It is in English only.
 
 5. REGULATED INDUSTRY / THIRD-PARTY MATERIAL
-Not a regulated industry. The game contains no licensed brands, real car makes or protected third-party material. All cars and bikes are original models. Bundled free assets: Poly Haven sky and trees (CC0), ambientCG textures (CC0), MakeHuman base body (CC0), Barlow font (SIL Open Font License).
+Not a regulated industry. The game contains no licensed brands, real car makes or protected third-party material. All cars and bikes are original models. Bundled free assets: Poly Haven sky and trees (CC0), ambientCG textures (CC0), MakeHuman base body (CC0), Barlow font (SIL Open Font License), engine and exhaust sound recordings from Freesound (CC0; sources listed in the project's docs/audio_sources.md).
 ```
 
 - Screen recording for review: on the iPhone (latest iOS, TestFlight build), Control Center screen recording. Start on the home screen, tap the icon, PLAY, drive ~40 s with near misses and one bump, Pause → End run, Garage purchase with earned coins, switch to GYRO and drive a few seconds. Upload unlisted (YouTube) or Drive "anyone with the link".
