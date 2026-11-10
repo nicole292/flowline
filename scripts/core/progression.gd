@@ -36,9 +36,16 @@ static func ratings(stats: Dictionary) -> Dictionary:
 	return {
 		"speed": clampf((float(stats["top_speed"]) - 40.0) / 70.0, 0.05, 1.0),
 		"accel": clampf((float(stats["accel"]) - 5.0) / 12.0, 0.05, 1.0),
-		"handling": clampf((float(stats["lat_max"]) * float(stats["steer_response"]) - 25.0) / 55.0, 0.05, 1.0),
+		"handling": clampf((float(stats["lat_max"]) * float(stats["steer_response"]) - 57.5) / 126.5, 0.05, 1.0),
 		"brakes": clampf((float(stats["brake_decel"]) - 9.0) / 18.0, 0.05, 1.0),
 	}
+
+
+## Garage bar for one stat: starts at the car's own rating and fills the
+## rest of the way with each upgrade level, so a maxed stat is a full bar.
+static func bar_value(base_rating: float, level: int) -> float:
+	var f := clampf(float(level) / MAX_LEVEL, 0.0, 1.0)
+	return lerpf(base_rating, 1.0, f)
 
 
 ## Price of buying `level` (1..MAX_LEVEL) of an upgrade for a car.

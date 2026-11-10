@@ -3,6 +3,8 @@ shader_type spatial;
 // world space, so the road mesh can follow the player while everything on it
 // stays put. Every texture period divides the 1200 m rebase distance.
 
+#include "res://shaders/bend.gdshaderinc"
+
 uniform sampler2D albedo_tex : source_color, repeat_enable, filter_linear_mipmap_anisotropic;
 uniform sampler2D normal_tex : hint_normal, repeat_enable, filter_linear_mipmap_anisotropic;
 uniform sampler2D rough_tex : repeat_enable, filter_linear_mipmap_anisotropic;
@@ -20,11 +22,21 @@ uniform float lamps = 0.0;           // night: warm light pools under the median
 uniform float lamp_x = -6.25;
 uniform float lamp_x2 = -11.75;
 uniform float lamp_period = 60.0;
+// Tunnels: two world-z ranges (from, to with from > to). Inside, the road is
+// out of the daylight and lit by the tunnel's lamp rows.
+uniform vec4 tunnels = vec4(-1e9, 1e9, -1e9, 1e9);
 
 varying vec3 wpos;
 
 void vertex() {
-	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;   // straight: markings stay on the lanes
+	bend_vertex(wpos.z, VERTEX, NORMAL);
+}
+
+float in_tunnel(float z) {
+	float a = smoothstep(tunnels.x + 6.0, tunnels.x - 6.0, z) * smoothstep(tunnels.y - 6.0, tunnels.y + 6.0, z);
+	float b = smoothstep(tunnels.z + 6.0, tunnels.z - 6.0, z) * smoothstep(tunnels.w - 6.0, tunnels.w + 6.0, z);
+	return max(a, b);
 }
 
 float line_mask(float d, float half_w) {
@@ -77,8 +89,14 @@ void fragment() {
 	vec3 col = mix(asphalt, vec3(0.78, 0.78, 0.75), paint);
 	float shoulder = smoothstep(half_road - 0.1, half_road + 0.05, abs(lx_road));
 	col *= mix(1.0, 1.08, shoulder);
-	ALBEDO = col;
-	if (lamps > 0.0) {
+	float tun = in_tunnel(p.y);
+	ALBEDO = col * mix(1.0, 0.3, tun);
+	if (tun > 0.0) {
+		// warm pools from the lamp rows above each lane edge
+		float pool = 0.55 + 0.45 * smoothstep(0.0, 1.0, abs(lx_road) / half_road);
+		EMISSION = col * tun * pool * vec3(1.0, 0.82, 0.6) * 1.3;
+	}
+	if (lamps > 0.0 && tun < 0.5) {
 		float dz = mod(p.y + lamp_period * 0.5, lamp_period) - lamp_period * 0.5;
 		float pool = exp(-pow((p.x - lamp_x) / 4.2, 2.0) - pow(dz / 11.0, 2.0));
 		pool += exp(-pow((p.x - lamp_x2) / 4.2, 2.0) - pow(dz / 11.0, 2.0));

@@ -12,9 +12,9 @@ extends RefCounted
 var top_speed := 62.0       ## m/s
 var accel := 8.0            ## m/s² from low speed
 var brake_decel := 13.0     ## m/s²
-var lat_max := 7.0          ## m/s sideways at full lock
-var steer_response := 5.0   ## 1/s, how fast lateral velocity follows input
-var lat_grip := 15.0        ## m/s², max change of lateral velocity
+var lat_max := 8.0          ## m/s sideways at full lock
+var steer_response := 10.0  ## 1/s, how fast lateral velocity follows input
+var lat_grip := 30.0        ## m/s², max change of lateral velocity
 var min_speed := 11.0       ## the car never fully stops on the highway
 var power_speed := 26.0     ## m/s where full acceleration starts to fall off
 
@@ -44,12 +44,16 @@ func step(dt: float, throttle: float, brake: float, steer: float) -> void:
 	speed = clampf(speed + a * dt, min_speed, top_speed)
 	long_accel = (speed - prev_speed) / dt
 
-	# Digital buttons ramp in over ~0.12 s so taps feel deliberate, not twitchy.
-	steer_input = move_toward(steer_input, clampf(steer, -1.0, 1.0), dt * 8.0)
+	# Input reaches the wheels in ~0.05 s: just enough to take the edge off a
+	# digital tap, short enough that a turn feels immediate.
+	steer_input = move_toward(steer_input, clampf(steer, -1.0, 1.0), dt * 20.0)
 	var speed_factor := clampf(speed / 24.0, 0.35, 1.0)
 	var target := steer_input * lat_max * speed_factor
 	var dv := (target - lat_vel) * (1.0 - exp(-steer_response * dt))
-	dv = clampf(dv, -lat_grip * dt, lat_grip * dt)
+	# Steering against the current drift bites harder, so flicking from one
+	# direction to the other happens at once instead of after a slide.
+	var grip := lat_grip * (1.6 if target * lat_vel < 0.0 else 1.0)
+	dv = clampf(dv, -grip * dt, grip * dt)
 	lat_vel += dv
 	lat_accel = dv / dt
 	x += lat_vel * dt

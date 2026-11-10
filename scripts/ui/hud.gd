@@ -19,7 +19,7 @@ const PANEL_BG := Color(0.05, 0.055, 0.065, 0.86)
 const BOLD := preload("res://assets/fonts/BarlowSemiCondensed-Bold.ttf")
 const MEDIUM := preload("res://assets/fonts/BarlowSemiCondensed-Medium.ttf")
 
-const WHEEL_LOCK := deg_to_rad(125.0)  ## wheel rotation for full steering lock
+const WHEEL_LOCK := deg_to_rad(90.0)  ## wheel rotation for full steering lock
 
 var _skip: Label   ## "tap to skip" under a wreck
 var steer_axis := 0.0
@@ -283,8 +283,12 @@ func _draw_camera_icon() -> void:
 ## Layout scale: 1.0 on a 720 px tall viewport.
 ## Size of drawn controls relative to the 720-high design. Includes the
 ## phone UI scale, so the wheel, arrows and pedals grow with the rest of the UI.
+## HUD size factor. Sized by height on phones; on squarer screens (iPads,
+## tablets) by a 16:9 share of the width instead, so the wheel, pedals and
+## speedometer don't grow to cover the road.
 func _k() -> float:
-	return get_viewport_rect().size.y * get_tree().root.content_scale_factor / 720.0
+	var vp := get_viewport_rect().size
+	return minf(vp.y, vp.x * 9.0 / 16.0) * get_tree().root.content_scale_factor / 720.0
 
 
 func _wheel_radius() -> float:
@@ -473,8 +477,8 @@ func _process(dt: float) -> void:
 	var a := _wheel_angle / WHEEL_LOCK
 	if absf(a) < 0.03:
 		a = 0.0
-	# Slightly progressive: fine corrections near the centre, full lock at the end.
-	steer_axis = signf(a) * pow(absf(a), 1.2)
+	# Linear: the car turns as soon as the wheel does.
+	steer_axis = a
 	if before != _wheel_angle or external_steer != _drawn_external:
 		_drawn_external = external_steer
 		_controls.queue_redraw()

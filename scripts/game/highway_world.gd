@@ -10,6 +10,11 @@ extends Node3D
 ##
 ## Layout (x): our 4 lanes centred on 0, concrete median at -BARRIER_X,
 ## the opposite carriageway centred on OPP_CENTER, guardrails outside.
+##
+## Bends and tunnels come from RoadCurve. Everything is built straight; long
+## meshes bend in their shaders (bend.gdshaderinc), and separate objects
+## (signs, bridges, tree stands, cars) are moved onto the curve each frame by
+## game.gd using bend_at() / bend_slope(). The sky and sun turn with the road.
 
 const REBASE := 1200.0
 const LANES := 4
@@ -21,6 +26,8 @@ const AHEAD := 650.0
 const BEHIND := 120.0
 const CHUNK := 100.0
 const CHUNKS := 8
+const SEG := 10.0          ## length of one mesh segment along the road (bending resolution)
+const TUNNEL_H := 6.6      ## tunnel ceiling height
 
 ## Where the sun is in the sky photo (from tools/godot/find_sun.gd) and how
 ## far we turn the sky so the sun lights the traffic ahead from behind-right.
@@ -30,13 +37,15 @@ const SKY_YAW_DEG := 150.0
 
 ## Time-of-day presets. Sun positions come from tools/godot/find_sun.gd.
 const ENVS := {
+	# Bright morning (playtest: "more light, more morning"): a strong, slightly
+	# warm sun, a brighter sky fill and a pale, warm haze.
 	"day": {"name": "Daytime", "sky": "res://assets/env/sky.hdr", "u": 0.595, "v": 0.232, "yaw": 150.0,
-		"sky_energy": 1.0, "sun_energy": 1.7, "sun_color": Color(1.0, 0.96, 0.9),
-		"fog": Color(0.72, 0.78, 0.86), "fog_density": 0.0016, "exposure": 1.0, "ambient": 1.0,
-		"trees": Color(0.82, 0.86, 0.8), "lamps": 0.0, "night": false},
+		"sky_energy": 1.15, "sun_energy": 2.3, "sun_color": Color(1.0, 0.93, 0.82),
+		"fog": Color(0.84, 0.86, 0.88), "fog_density": 0.0010, "exposure": 1.18, "ambient": 1.35,
+		"trees": Color(0.92, 0.96, 0.86), "lamps": 0.0, "night": false},
 	"sunset": {"name": "Golden Hour", "sky": "res://assets/env/sky_sunset.hdr", "u": 0.603, "v": 0.408,
 		"yaw": 25.0, "sky_energy": 1.15, "sun_energy": 2.1, "sun_color": Color(1.0, 0.72, 0.42),
-		"fog": Color(0.80, 0.70, 0.62), "fog_density": 0.0022, "exposure": 1.05, "ambient": 0.9,
+		"fog": Color(0.80, 0.70, 0.62), "fog_density": 0.0015, "exposure": 1.05, "ambient": 0.9,
 		"trees": Color(0.62, 0.58, 0.5), "lamps": 0.0, "night": false},
 	"night": {"name": "Night", "sky": "res://assets/env/sky_night.hdr", "u": 0.599, "v": 0.404,
 		"yaw": 110.0, "sky_energy": 0.09, "sun_energy": 0.22, "sun_color": Color(0.62, 0.72, 1.0),
@@ -62,8 +71,23 @@ var _periodic: Array[Dictionary] = []   # {nodes, period, offset, place: Callabl
 var _concrete: StandardMaterial3D
 var _steel: StandardMaterial3D
 var _road_mats: Array[ShaderMaterial] = []
-var _lamp_mat: StandardMaterial3D
-var _refl_mat: StandardMaterial3D
+var _lamp_mat: ShaderMaterial
+var _refl_mat: ShaderMaterial
+var _pole_mats: Array[ShaderMaterial] = []   ## lamp columns: hidden inside tunnels
+var _terrain_mat: ShaderMaterial
+
+var curve := RoadCurve.new()
+var _bend_mats: Array[ShaderMaterial] = []   ## every material that bends with the road
+var _bend_table := PackedFloat32Array()
+var _tunnels := {}                           ## tunnel start u -> node
+var _tunnel_mats := {}
+var _tunnel_parts := {}
+## 0 outside, 1 deep inside a tunnel (at the camera): daylight is shut out.
+var tunnel_t := 0.0
+var _base_sun_basis := Basis.IDENTITY
+var _base_sky_yaw := 0.0
+var _base_sun_energy := 1.0
+var _base_ambient := 1.0
 var _sign_mats: Array[StandardMaterial3D] = []
 var _tree_mats: Array[StandardMaterial3D] = []
 var _sky_mat: PanoramaSkyMaterial
@@ -91,6 +115,7 @@ func build() -> void:
 	_build_trees()
 	_build_gantries()
 	_build_bridges()
+	_make_tunnel_parts()
 	apply_env("day")
 
 
@@ -114,6 +139,25 @@ func _make_shared_materials() -> void:
 	_steel.metallic = 0.85
 	_steel.roughness = 0.38
 	_steel.cull_mode = BaseMaterial3D.CULL_DISABLED
+
+
+## A material that bends with the road (see shaders/bend_std.gdshader).
+func _bend_mat(params: Dictionary, double_sided := false) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = load("res://shaders/bend_std_double.gdshader" if double_sided else "res://shaders/bend_std.gdshader")
+	for k in params:
+		m.set_shader_parameter(k, params[k])
+	_bend_mats.append(m)
+	return m
+
+
+func _concrete_bend() -> ShaderMaterial:
+	return _bend_mat({"albedo": Color(0.62, 0.61, 0.59), "use_tex": true,
+			"albedo_tex": _tex("concrete_albedo"), "tex_scale": 0.5, "roughness_v": 0.88})
+
+
+func _steel_bend() -> ShaderMaterial:
+	return _bend_mat({"albedo": Color(0.62, 0.64, 0.66), "metallic_v": 0.85, "roughness_v": 0.38}, true)
 
 
 static func sky_dir(u: float, v: float) -> Vector3:
@@ -140,7 +184,7 @@ func _build_environment() -> void:
 	environment.fog_enabled = true
 	environment.fog_light_color = Color(0.72, 0.78, 0.86)
 	environment.fog_density = 0.0016
-	environment.fog_aerial_perspective = 0.85
+	environment.fog_aerial_perspective = 0.6  # lighter haze: far traffic stays readable
 	environment.fog_sky_affect = 0.0
 	environment.glow_enabled = true
 	environment.glow_intensity = 0.45
@@ -168,6 +212,7 @@ func _build_environment() -> void:
 func _strip(width: float, x: float, mat: Material) -> MeshInstance3D:
 	var pm := PlaneMesh.new()
 	pm.size = Vector2(width, AHEAD + BEHIND)
+	pm.subdivide_depth = int((AHEAD + BEHIND) / SEG)   # vertices to bend along the road
 	pm.center_offset = Vector3(x, 0, -(AHEAD - BEHIND) * 0.5)
 	var mi := MeshInstance3D.new()
 	mi.mesh = pm
@@ -191,6 +236,7 @@ func _road_material(center: float) -> ShaderMaterial:
 	m.set_shader_parameter("lamp_x", -BARRIER_X - 0.1 + 2.75)
 	m.set_shader_parameter("lamp_x2", -BARRIER_X - 0.1 - 2.75)
 	_road_mats.append(m)
+	_bend_mats.append(m)
 	return m
 
 
@@ -214,6 +260,8 @@ func _build_terrain() -> void:
 	m.set_shader_parameter("verge_center2", OPP_CENTER)
 	m.set_shader_parameter("verge_in2", BARRIER_X + 0.2)
 	m.set_shader_parameter("verge_out2", BARRIER_X + 1.4)
+	_bend_mats.append(m)
+	_terrain_mat = m
 	var w := 900.0
 	var right := _strip(w, BARRIER_X + 0.3 + w * 0.5, m)
 	var left := _strip(w, OPP_CENTER - BARRIER_X - 0.3 - w * 0.5, m)
@@ -228,17 +276,19 @@ func _extrude(profile: PackedVector2Array, x: float, mat: Material, smooth := tr
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	if smooth:
 		st.set_smooth_group(0)
-	var z0 := BEHIND
-	var z1 := -AHEAD
-	for i in profile.size() - 1:
-		var a := profile[i]
-		var b := profile[i + 1]
-		var v0 := Vector3(x + a.x, a.y, z0)
-		var v1 := Vector3(x + b.x, b.y, z0)
-		var v2 := Vector3(x + b.x, b.y, z1)
-		var v3 := Vector3(x + a.x, a.y, z1)
-		for v in [v0, v1, v2, v0, v2, v3]:
-			st.add_vertex(v)
+	var segs := int((AHEAD + BEHIND) / SEG)
+	for sgi in segs:  # in short segments, so the shader can bend it
+		var z0 := BEHIND - sgi * SEG
+		var z1 := z0 - SEG
+		for i in profile.size() - 1:
+			var a := profile[i]
+			var b := profile[i + 1]
+			var v0 := Vector3(x + a.x, a.y, z0)
+			var v1 := Vector3(x + b.x, b.y, z0)
+			var v2 := Vector3(x + b.x, b.y, z1)
+			var v3 := Vector3(x + a.x, a.y, z1)
+			for v in [v0, v1, v2, v0, v2, v3]:
+				st.add_vertex(v)
 	st.generate_normals()
 	var mi := MeshInstance3D.new()
 	mi.mesh = st.commit()
@@ -254,25 +304,22 @@ func _build_barriers() -> void:
 	var jersey := PackedVector2Array([
 		Vector2(0.32, 0.0), Vector2(0.28, 0.08), Vector2(0.13, 0.33), Vector2(0.09, 0.86),
 		Vector2(-0.09, 0.86), Vector2(-0.13, 0.33), Vector2(-0.28, 0.08), Vector2(-0.32, 0.0)])
-	_extrude(jersey, -BARRIER_X - 0.1, _concrete, false)
+	_extrude(jersey, -BARRIER_X - 0.1, _concrete_bend(), false)
 
 	# Galvanised W-beam guardrails on both outer edges.
 	var beam := PackedVector2Array([
 		Vector2(0.0, 0.50), Vector2(-0.09, 0.56), Vector2(-0.09, 0.62), Vector2(-0.025, 0.67),
 		Vector2(-0.09, 0.72), Vector2(-0.09, 0.78), Vector2(0.0, 0.84)])
-	_extrude(beam, BARRIER_X, _steel)
+	var steel := _steel_bend()
+	_extrude(beam, BARRIER_X, steel)
 	var beam_l := PackedVector2Array()
 	for p in beam:
 		beam_l.append(Vector2(-p.x, p.y))
-	_extrude(beam_l, OPP_CENTER - BARRIER_X, _steel)
+	_extrude(beam_l, OPP_CENTER - BARRIER_X, steel)
 
 	var post_mesh := BoxMesh.new()
 	post_mesh.size = Vector3(0.12, 0.95, 0.16)
-	var post_mat := StandardMaterial3D.new()
-	post_mat.albedo_color = Color(0.45, 0.46, 0.48)
-	post_mat.metallic = 0.6
-	post_mat.roughness = 0.5
-	post_mesh.material = post_mat
+	post_mesh.material = _bend_mat({"albedo": Color(0.45, 0.46, 0.48), "metallic_v": 0.6, "roughness_v": 0.5})
 	var xforms: Array[Transform3D] = []
 	var z := BEHIND
 	while z > -AHEAD:
@@ -283,13 +330,8 @@ func _build_barriers() -> void:
 	# Reflectors on every 12th post (white on the right, like real motorways).
 	var refl := BoxMesh.new()
 	refl.size = Vector3(0.03, 0.09, 0.07)
-	var refl_mat := StandardMaterial3D.new()
-	_refl_mat = refl_mat
-	refl_mat.albedo_color = Color(1, 1, 1)
-	refl_mat.emission_enabled = true
-	refl_mat.emission = Color(1, 1, 1)
-	refl_mat.emission_energy_multiplier = 0.4
-	refl.material = refl_mat
+	_refl_mat = _bend_mat({"albedo": Color(1, 1, 1), "emission_color": Color(1, 1, 1), "emission_energy": 0.4})
+	refl.material = _refl_mat
 	var rx: Array[Transform3D] = []
 	z = BEHIND
 	while z > -AHEAD:
@@ -318,17 +360,11 @@ func _add_snapped(mesh: Mesh, xforms: Array[Transform3D], period: float,
 
 func _build_poles() -> void:
 	# Double-armed lighting columns on the central reserve.
-	var metal := StandardMaterial3D.new()
-	metal.albedo_color = Color(0.55, 0.57, 0.6)
-	metal.metallic = 0.75
-	metal.roughness = 0.4
-	var lamp := StandardMaterial3D.new()
-	lamp.albedo_color = Color(0.85, 0.85, 0.8)
-	lamp.roughness = 0.3
-	lamp.emission_enabled = true
-	lamp.emission = Color(1.0, 0.8, 0.5)
-	lamp.emission_energy_multiplier = 0.0
+	var metal := _bend_mat({"albedo": Color(0.55, 0.57, 0.6), "metallic_v": 0.75, "roughness_v": 0.4})
+	var lamp := _bend_mat({"albedo": Color(0.85, 0.85, 0.8), "roughness_v": 0.3,
+			"emission_color": Color(1.0, 0.8, 0.5), "emission_energy": 0.0})
 	_lamp_mat = lamp
+	_pole_mats = [metal, lamp]
 	var st := SurfaceTool.new()
 	var pole := CylinderMesh.new()
 	pole.top_radius = 0.08
@@ -429,7 +465,10 @@ func _fill_chunk(chunk: Dictionary, index: int) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash(index * 7919 + 17)
 	var node: Node3D = chunk["node"]
-	node.position.z = -index * CHUNK - shifted_total
+	# The node sits at the chunk's middle, so turning it onto a bend moves
+	# its trees at most half a chunk off the curve.
+	node.position.z = -(index + 0.5) * CHUNK - shifted_total
+	var tunnels := curve.tunnels_between(index * CHUNK - 60.0, (index + 1) * CHUNK + 60.0)
 	var right_edge := BARRIER_X + 7.0 + rng.randf() * 6.0
 	var left_edge := -OPP_CENTER + BARRIER_X + 6.0 + rng.randf() * 6.0
 	var mms: Array = chunk["mms"]
@@ -443,7 +482,12 @@ func _fill_chunk(chunk: Dictionary, index: int) -> void:
 			var s := rng.randf_range(1.2, 2.0) if tall else rng.randf_range(2.0, 3.2)
 			var b := Basis.IDENTITY.scaled(Vector3(s * rng.randf_range(0.85, 1.15), s, s))
 			var x := dist if side > 0 else -dist
-			mm.set_instance_transform(i, Transform3D(b, Vector3(x, -0.1, -rng.randf() * CHUNK)))
+			var z := (0.5 - rng.randf()) * CHUNK
+			var u := (index + 0.5) * CHUNK - z
+			for tn in tunnels:  # the tunnel's hill stands here: no trees through it
+				if u > float(tn[0]) - 60.0 and u < float(tn[1]) + 60.0:
+					b = Basis.IDENTITY.scaled(Vector3.ONE * 0.001)
+			mm.set_instance_transform(i, Transform3D(b, Vector3(x, -0.1, z)))
 
 
 # ------------------------------------------------------------------ gantries / bridges
@@ -569,8 +613,9 @@ func _update_periodic(player_z: float) -> void:
 				break
 			var n: Node3D = nodes[used]
 			used += 1
-			n.visible = true
-			n.position.z = -(k * period + offset) - shifted_total
+			var u := k * period + offset
+			n.visible = curve.tunnels_between(u - 30.0, u + 30.0).is_empty()  # never inside a tunnel
+			n.position.z = -u - shifted_total
 			if n.get_meta("index", -1) != k:
 				n.set_meta("index", k)
 				var place: Callable = p["place"]
@@ -600,10 +645,14 @@ func apply_env(name: String) -> void:
 	sun.look_at_from_position(Vector3.ZERO, -to_sun, Vector3.UP if absf(to_sun.y) < 0.99 else Vector3.BACK)
 	sun.light_energy = e["sun_energy"]
 	sun.light_color = e["sun_color"]
+	_base_sun_basis = sun.basis
+	_base_sky_yaw = environment.sky_rotation.y
+	_base_sun_energy = sun.light_energy
+	_base_ambient = environment.ambient_light_energy
 	for m in _road_mats:
 		m.set_shader_parameter("lamps", e["lamps"])
-	_lamp_mat.emission_energy_multiplier = 6.0 if is_night else 0.0
-	_refl_mat.emission_energy_multiplier = 3.0 if is_night else 0.4
+	_lamp_mat.set_shader_parameter("emission_energy", 6.0 if is_night else 0.0)
+	_refl_mat.set_shader_parameter("emission_energy", 3.0 if is_night else 0.4)
 	for m in _sign_mats:
 		m.emission_energy_multiplier = 0.6 if is_night else 0.0
 	for m in _tree_mats:
@@ -629,6 +678,7 @@ func update(player_z: float) -> void:
 		var period: float = s[1]
 		(s[0] as Node3D).position.z = floorf(player_z / period) * period
 	_update_periodic(player_z)
+	_update_tunnels(player_z)
 	# Recycle tree chunks to cover [player - AHEAD, player + BEHIND].
 	var abs_z := player_z + shifted_total
 	var first := int(floor(-(abs_z + BEHIND) / CHUNK))
@@ -652,3 +702,239 @@ func rebase(dz: float) -> void:
 	shifted_total -= dz
 	for c in _chunks:
 		(c["node"] as Node3D).position.z += dz
+	for k in _tunnels:
+		(_tunnels[k] as Node3D).position.z += dz
+
+
+## Absolute distance along the road of a world z.
+func u_of(z: float) -> float:
+	return -(z + shifted_total)
+
+
+## Called once a frame after the camera has moved: bends every bending
+## material around the camera, turns sky and sun with the road, and dims the
+## daylight inside tunnels.
+func update_curve(cam_z: float) -> void:
+	var u_cam := u_of(cam_z)
+	_bend_table = curve.bend_table(u_cam)
+	var tz := Vector4(-1e9, 1e9, -1e9, 1e9)
+	var tl := curve.tunnels_between(u_cam - BEHIND - 200.0, u_cam + AHEAD + 200.0)
+	for i in mini(tl.size(), 2):
+		tz[i * 2] = -float(tl[i][0]) - shifted_total
+		tz[i * 2 + 1] = -float(tl[i][1]) - shifted_total
+	for m in _bend_mats:
+		m.set_shader_parameter("bend", _bend_table)
+		m.set_shader_parameter("bend_cam_z", cam_z)
+	for m in _road_mats:
+		m.set_shader_parameter("tunnels", tz)
+	var hide := Vector4(tz.x + 15.0, tz.y - 15.0, tz.z + 15.0, tz.w - 15.0)
+	for m in _pole_mats:
+		m.set_shader_parameter("hide", hide)
+	# Turning right swings the sky (and the sun) to the left.
+	var h := curve.heading(u_cam)
+	environment.sky_rotation = Vector3(0, _base_sky_yaw + h, 0)
+	sun.basis = Basis(Vector3.UP, h) * _base_sun_basis
+	tunnel_t = curve.tunnel_depth(u_cam)
+	sun.light_energy = _base_sun_energy * (1.0 - 0.85 * tunnel_t)
+	environment.ambient_light_energy = _base_ambient * (1.0 - 0.65 * tunnel_t)
+
+
+## Sideways offset of the road d metres ahead of the camera (see RoadCurve).
+func bend_at(d: float) -> float:
+	return 0.0 if _bend_table.is_empty() else RoadCurve.table_at(_bend_table, d)
+
+
+func bend_slope(d: float) -> float:
+	return 0.0 if _bend_table.is_empty() else RoadCurve.table_slope(_bend_table, d)
+
+
+## Separate objects that game.gd turns onto the curve each frame.
+func rigid_nodes() -> Array[Node3D]:
+	var out: Array[Node3D] = []
+	for c in _chunks:
+		out.append(c["node"])
+	for p in _periodic:
+		for n in p["nodes"]:
+			if (n as Node3D).visible:
+				out.append(n)
+	return out
+
+
+# ------------------------------------------------------------------ tunnels
+
+func _update_tunnels(player_z: float) -> void:
+	var u := u_of(player_z)
+	var want := {}
+	for t in curve.tunnels_between(u - BEHIND - 150.0, u + AHEAD + 150.0):
+		want[float(t[0])] = t
+	for k in _tunnels.keys():
+		if not want.has(k):
+			(_tunnels[k] as Node).queue_free()
+			_tunnels.erase(k)
+	for k in want:
+		if not _tunnels.has(k):
+			var node := _build_tunnel(float(want[k][1]) - float(want[k][0]))
+			node.position.z = -float(k) - shifted_total
+			_tunnels[k] = node
+
+
+func _tunnel_materials() -> Dictionary:
+	if _tunnel_mats.is_empty():
+		_tunnel_mats = {
+			"wall": _bend_mat({"albedo": Color(0.42, 0.42, 0.4), "use_tex": true,
+					"albedo_tex": _tex("concrete_albedo"), "tex_scale": 0.35, "roughness_v": 0.7,
+					"emission_color": Color(1.0, 0.85, 0.65), "emission_energy": 0.06}),
+			"band": _bend_mat({"albedo": Color(0.85, 0.6, 0.1), "roughness_v": 0.5,
+					"emission_color": Color(0.85, 0.6, 0.1), "emission_energy": 0.15}),
+			"ceiling": _bend_mat({"albedo": Color(0.08, 0.08, 0.085), "roughness_v": 0.9}),
+			"lamp": _bend_mat({"albedo": Color(1.0, 0.9, 0.75), "emission_color": Color(1.0, 0.84, 0.6),
+					"emission_energy": 5.0, "dash_period": 6.0, "dash_fill": 0.55}),
+			"portal": _concrete_bend(),
+			"rock": _bend_mat({"albedo": Color(0.5, 0.45, 0.39), "use_tex": true,
+					"albedo_tex": _tex("concrete_albedo"), "tex_scale": 0.12, "roughness_v": 0.95}),
+		}
+		var hill := _terrain_mat.duplicate() as ShaderMaterial
+		hill.set_shader_parameter("verge_in", -100.0)   # all grass, no gravel verge
+		hill.set_shader_parameter("verge_out", -90.0)
+		hill.set_shader_parameter("verge_in2", -1.0)
+		_bend_mats.append(hill)
+		_tunnel_mats["hill"] = hill
+	return _tunnel_mats
+
+
+## Adds a box from (x0, y0, 0) to (x1, y1, -length), cut into SEG pieces
+## along z so it bends with the road. `caps`: close the two ends.
+static func _long_box(st: SurfaceTool, x0: float, x1: float, y0: float, y1: float, length: float,
+		caps := true) -> void:
+	var segs := maxi(1, int(ceil(length / SEG)))
+	for i in segs:
+		var za := -i * length / segs
+		var zb := -(i + 1) * length / segs
+		var c := [Vector3(x0, y0, za), Vector3(x1, y0, za), Vector3(x1, y1, za), Vector3(x0, y1, za),
+				Vector3(x0, y0, zb), Vector3(x1, y0, zb), Vector3(x1, y1, zb), Vector3(x0, y1, zb)]
+		# top, bottom, left (-x), right (+x), counter-clockwise seen from outside
+		var faces := [[3, 2, 6, 7], [0, 4, 5, 1], [0, 3, 7, 4], [1, 5, 6, 2]]
+		if caps and i == 0:
+			faces.append([0, 1, 2, 3])   # near end (+z)
+		if caps and i == segs - 1:
+			faces.append([5, 4, 7, 6])   # far end (-z)
+		for f in faces:
+			for q in [0, 2, 1, 0, 3, 2]:
+				st.add_vertex(c[f[q]])
+
+
+static func _commit(build: Callable) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	build.call(st)
+	st.generate_normals()
+	return st.commit()
+
+
+## The ridge over a tunnel: height of the hill dx metres from its crest line.
+func _hill_y(dx: float) -> float:
+	return (TUNNEL_H + 9.0) * pow(1.0 - smoothstep(18.0, 160.0, absf(dx)), 1.3) + 0.4
+
+
+## Tunnel pieces, built once when the world is built: 10 m slices (walls,
+## kerbs, ceiling, lamp rows, hill) that a tunnel repeats as instances, and
+## the end pieces. Placing a tunnel then costs next to nothing, so there is
+## no hitch on a slow phone when one comes into view.
+## name -> [mesh, material, casts shadows, kind: "slice" | "portal" | "near" | "far"]
+func _make_tunnel_parts() -> void:
+	var mats := _tunnel_materials()
+	var h := TUNNEL_H
+	var out_r := BARRIER_X + 0.9                  # outer wall of our tube
+	var out_l := OPP_CENTER - BARRIER_X - 0.9     # outer wall of the other tube
+	var mid0 := -BARRIER_X - 0.5                  # central wall between the tubes
+	var mid1 := -BARRIER_X + 0.3
+	_tunnel_parts["wall"] = [_commit(func(st: SurfaceTool) -> void:
+		_long_box(st, out_r, out_r + 0.8, 0.0, h, SEG, false)
+		_long_box(st, out_l - 0.8, out_l, 0.0, h, SEG, false)
+		_long_box(st, mid0, mid1, 0.0, h, SEG, false)), mats["wall"], true, "slice"]
+	_tunnel_parts["band"] = [_commit(func(st: SurfaceTool) -> void:  # yellow kerb at the foot of each wall
+		_long_box(st, out_r - 0.05, out_r, 0.0, 0.5, SEG, false)
+		_long_box(st, out_l, out_l + 0.05, 0.0, 0.5, SEG, false)
+		_long_box(st, mid0 - 0.05, mid0, 0.0, 0.5, SEG, false)
+		_long_box(st, mid1, mid1 + 0.05, 0.0, 0.5, SEG, false)), mats["band"], false, "slice"]
+	_tunnel_parts["ceiling"] = [_commit(func(st: SurfaceTool) -> void:
+		_long_box(st, out_l - 0.8, out_r + 0.8, h, h + 0.7, SEG, false)), mats["ceiling"], true, "slice"]
+	_tunnel_parts["lamp"] = [_commit(func(st: SurfaceTool) -> void:  # lamp rows near the top of every wall
+		for x in [out_r - 0.12, mid1 + 0.04, mid0 - 0.12, out_l + 0.04]:
+			_long_box(st, x, x + 0.08, h - 0.7, h - 0.5, SEG, false)), mats["lamp"], false, "slice"]
+	var cx := (out_l + out_r) * 0.5
+	var xs: Array[float] = []
+	var xx := -160.0
+	while xx <= 160.0:
+		xs.append(xx)
+		xx += 10.0
+	_tunnel_parts["hill"] = [_commit(func(st: SurfaceTool) -> void:
+		for j in xs.size() - 1:
+			var a := Vector3(cx + xs[j], _hill_y(xs[j]), 0.0)
+			var b := Vector3(cx + xs[j + 1], _hill_y(xs[j + 1]), 0.0)
+			var c := Vector3(cx + xs[j + 1], _hill_y(xs[j + 1]), -SEG)
+			var d := Vector3(cx + xs[j], _hill_y(xs[j]), -SEG)
+			for v in [a, c, b, a, d, c]:
+				st.add_vertex(v)), mats["hill"], true, "slice"]
+	# Portal: a concrete face around both tube mouths, 1.2 m deep, centred on the mouth.
+	_tunnel_parts["portal"] = [_commit(func(st: SurfaceTool) -> void:
+		var w0 := out_l - 16.0
+		var w1 := out_r + 16.0
+		_long_box(st, w0, w1, h, h + 4.5, 1.2)        # lintel over both tubes
+		_long_box(st, w0, out_l - 0.8, 0.0, h, 1.2)   # side walls
+		_long_box(st, out_r + 0.8, w1, 0.0, h, 1.2)), mats["portal"], true, "portal"]
+	# Cut rock faces where the road goes into the hill, open over the tubes.
+	for end in ["near", "far"]:
+		_tunnel_parts["rock_" + end] = [_commit(func(st: SurfaceTool) -> void:
+			for j in xs.size() - 1:
+				var xa := cx + xs[j]
+				var xb := cx + xs[j + 1]
+				var y0 := h + 4.5 if (xb > out_l - 0.8 and xa < out_r + 0.8) else 0.0
+				var q := [Vector3(xa, y0, 0.0), Vector3(xb, y0, 0.0),
+						Vector3(xb, maxf(_hill_y(xs[j + 1]), y0), 0.0), Vector3(xa, maxf(_hill_y(xs[j]), y0), 0.0)]
+				var order := [0, 2, 1, 0, 3, 2] if end == "near" else [0, 1, 2, 0, 2, 3]  # facing out of the hill
+				for o in order:
+					st.add_vertex(q[o])), mats["rock"], true, end]
+
+
+## A twin-tube tunnel through a grassy hill: one tube per carriageway, lamp
+## rows along the walls, concrete portals at both ends. Straight from z = 0
+## to z = -length (a multiple of SEG); it bends with the road in its shaders.
+func _build_tunnel(length: float) -> Node3D:
+	if _tunnel_parts.is_empty():
+		_make_tunnel_parts()
+	var node := Node3D.new()
+	add_child(node)
+	var segs := maxi(1, int(round(length / SEG)))
+	length = segs * SEG
+	for key in _tunnel_parts:
+		var part: Array = _tunnel_parts[key]
+		var gi: GeometryInstance3D
+		match part[3]:
+			"slice":
+				var mm := MultiMesh.new()
+				mm.transform_format = MultiMesh.TRANSFORM_3D
+				mm.mesh = part[0]
+				mm.instance_count = segs
+				for i in segs:
+					mm.set_instance_transform(i, Transform3D(Basis.IDENTITY, Vector3(0, 0, -i * SEG)))
+				var mmi := MultiMeshInstance3D.new()
+				mmi.multimesh = mm
+				gi = mmi
+			_:
+				for z in ([0.0, -length] if part[3] == "portal" else [0.0 if part[3] == "near" else -length]):
+					var mi := MeshInstance3D.new()
+					mi.mesh = part[0]
+					mi.position.z = z + (0.6 if part[3] == "portal" else 0.0)
+					mi.material_override = part[1]
+					mi.extra_cull_margin = 120.0
+					if not part[2]:
+						mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+					node.add_child(mi)
+				continue
+		gi.material_override = part[1]
+		gi.extra_cull_margin = 120.0   # it is drawn bent, up to ~100 m off its straight box
+		if not part[2]:
+			gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		node.add_child(gi)
+	return node

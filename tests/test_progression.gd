@@ -97,3 +97,27 @@ func test_missions_get_harder() -> void:
 	var later := Progression.make_mission(Progression.MISSIONS.size() * 3)
 	t.check(later["stat"] == first["stat"] and int(later["target"]) > int(first["target"]), "targets grow")
 	t.check(int(later["reward"]) > int(first["reward"]), "rewards grow")
+
+
+func test_maxed_upgrade_fills_the_garage_bar() -> void:
+	for car in CarCatalog.PLAYER_CARS:
+		var r := Progression.ratings(Progression.stats_for(car, {}))
+		for cat in Progression.UPGRADES:
+			t.near(Progression.bar_value(r[cat], Progression.MAX_LEVEL), 1.0, 0.0001, "%s %s 5/5 is a full bar" % [car["id"], cat])
+			t.near(Progression.bar_value(r[cat], 0), r[cat], 0.0001, "%s %s 0/5 shows the car's own rating" % [car["id"], cat])
+			t.check(Progression.bar_value(r[cat], 3) > Progression.bar_value(r[cat], 2), "each level grows the bar")
+
+
+func test_traffic_colours_vary() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	var recent: Array = []
+	var seen := {}
+	for i in 300:
+		var c := CarCatalog.random_paint(rng, recent)
+		t.check(not recent.has(c), "no colour repeats among neighbours")
+		seen[c] = true
+		recent.append(c)
+		if recent.size() > 3:
+			recent.pop_front()
+	t.check(seen.size() >= 10, "many different colours (%d)" % seen.size())

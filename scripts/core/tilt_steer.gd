@@ -12,7 +12,7 @@ extends RefCounted
 ## answer for all of them, because each is only a rotation, a flip of both
 ## axes or a scale of the screen's x/y. `invert` covers a phone that mirrors.
 
-var lock_deg := 22.0        ## turn for full lock
+var lock_deg := 18.0        ## turn for full lock
 var dead_deg := 1.5         ## small dead zone so straight is easy to hold
 var calibrate := true       ## next usable reading becomes the centre
 var invert := false
@@ -38,5 +38,5 @@ func update(g: Vector2) -> float:
 	if invert:
 		deg = -deg
 	deg = signf(deg) * maxf(0.0, absf(deg) - dead_deg)
-	value = lerpf(value, clampf(deg / lock_deg, -1.0, 1.0), 0.35)
+	value = lerpf(value, clampf(deg / lock_deg, -1.0, 1.0), 0.6)
 	return value

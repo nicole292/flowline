@@ -38,7 +38,7 @@ func test_steering_direction_and_grip_limit() -> void:
 	for i in 30:
 		var before := m.lat_vel
 		m.step(dt, 1.0, 0.0, 1.0)
-		t.check(absf(m.lat_vel - before) <= m.lat_grip * dt + 1e-5, "lateral change limited by grip")
+		t.check(absf(m.lat_vel - before) <= m.lat_grip * 1.6 * dt + 1e-5, "lateral change limited by grip")
 	t.check(m.x > 0.0 and m.lat_vel > 0.0, "positive steer moves towards +x")
 
 
@@ -53,14 +53,14 @@ func test_releasing_steer_settles_quickly() -> void:
 
 
 func test_lane_change_takes_reasonable_time() -> void:
-	# One lane (3.6 m) at highway speed should take roughly 0.6-1.4 s.
+	# One lane (3.6 m) at highway speed: quick (well under a second) but not a teleport.
 	var m := _car()
 	m.speed = 35.0
 	var time := 0.0
 	while m.x < 3.6 and time < 5.0:
 		m.step(1.0 / 60.0, 1.0, 0.0, 1.0)
 		time += 1.0 / 60.0
-	t.check(time > 0.6 and time < 1.4, "lane change time %f" % time)
+	t.check(time > 0.35 and time < 0.9, "lane change time %f" % time)
 
 
 func test_barrier_constrain() -> void:
@@ -88,3 +88,16 @@ func test_cars_differ_in_handling() -> void:
 			time += 1.0 / 60.0
 		times.append(time)
 	t.check(times[0] > times[4], "supercar out-accelerates the starter car")
+
+
+func test_turning_the_other_way_is_immediate() -> void:
+	# Full right, then full left: the car must be heading left within 0.25 s.
+	var m := _car()
+	m.speed = 45.0
+	for i in 60:
+		m.step(1.0 / 60.0, 1.0, 0.0, 1.0)
+	var time := 0.0
+	while m.lat_vel > 0.0 and time < 2.0:
+		m.step(1.0 / 60.0, 1.0, 0.0, -1.0)
+		time += 1.0 / 60.0
+	t.check(time < 0.25, "reversed direction in %f s" % time)

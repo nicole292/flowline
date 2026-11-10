@@ -520,7 +520,7 @@ func _refresh_garage() -> void:
 func _fill_upgrades(tab: VBoxContainer, car: Dictionary, owned: bool) -> void:
 	var id: String = car["id"]
 	var lv := save.car_levels(id)
-	var r := Progression.ratings(Progression.stats_for(car, lv if owned else {}))
+	var r := Progression.ratings(Progression.stats_for(car, {}))
 	for cat in Progression.UPGRADES:
 		var strip := PanelContainer.new()
 		strip.add_theme_stylebox_override("panel", UiTheme.box(Color(UiTheme.WELL, 0.55), UiTheme.R - 4, Color(0, 0, 0, 0), 0, 10))
@@ -533,7 +533,7 @@ func _fill_upgrades(tab: VBoxContainer, car: Dictionary, owned: bool) -> void:
 		bar.show_percentage = false
 		bar.max_value = 1.0
 		bar.step = 0.001
-		bar.value = r[cat]
+		bar.value = Progression.bar_value(r[cat], int(lv[cat]) if owned else 0)
 		bar.custom_minimum_size = Vector2(60, 10)
 		bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER

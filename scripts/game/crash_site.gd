@@ -114,4 +114,5 @@ func build(length: float, rng: RandomNumberGenerator) -> void:
 	smoke.scale_amount_curve = curve
 	smoke.position = Vector3(0, 1.0, -length * 0.3)
 	smoke.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	smoke.local_coords = true  # the site is static; world-space smoke was left behind on rebase
 	add_child(smoke)

@@ -33,6 +33,9 @@ var _plates: Array[Label3D] = []
 var _tail_slots: Array = []           # [MeshInstance3D, surface]
 var _blinkers: Array[MeshInstance3D] = []
 var _siren: OmniLight3D               # police light bar glow, only on the patrol car
+## Player's car: braking also throws a red glow on the road behind it.
+var brake_glow := false
+var _brake_light: OmniLight3D
 var _braking := false
 var _spin := 0.0
 var _blink_clock := 0.0
@@ -66,7 +69,7 @@ static func shared_material(key: String) -> Material:
 			m.albedo_color = Color(0.85, 0.88, 0.95)
 			m.emission_enabled = true
 			m.emission = Color(1.0, 0.97, 0.9)
-			m.emission_energy_multiplier = 1.2
+			m.emission_energy_multiplier = 2.6
 			m.roughness = 0.1
 		"TailLens":
 			m.albedo_color = Color(0.18, 0.01, 0.01)
@@ -91,13 +94,13 @@ static func shared_material(key: String) -> Material:
 			m.albedo_color = Color(0.32, 0.02, 0.02)
 			m.emission_enabled = true
 			m.emission = Color(1.0, 0.05, 0.03)
-			m.emission_energy_multiplier = 1.6
+			m.emission_energy_multiplier = 1.0
 			m.roughness = 0.15
 		"TailOn":
-			m.albedo_color = Color(0.6, 0.03, 0.02)
+			m.albedo_color = Color(0.9, 0.04, 0.02)
 			m.emission_enabled = true
 			m.emission = Color(1.0, 0.06, 0.03)
-			m.emission_energy_multiplier = 5.0
+			m.emission_energy_multiplier = 12.0
 			m.roughness = 0.15
 		"SirenRed", "SirenBlue":
 			var blue := key == "SirenBlue"
@@ -336,7 +339,7 @@ func _build_plates() -> void:
 func _add_plate(parent: Node3D, box: AABB, rear: bool) -> void:
 	var c := box.get_center()
 	var out := 1.0 if rear else -1.0
-	var face := (box.end.z if rear else box.position.z) + out * 0.004
+	var face := (box.end.z if rear else box.position.z) + out * 0.006
 	var q := MeshInstance3D.new()
 	var qm := QuadMesh.new()
 	qm.size = Vector2(box.size.x, box.size.y)
@@ -355,7 +358,7 @@ func _add_plate(parent: Node3D, box: AABB, rear: bool) -> void:
 	band.mesh = bm
 	band.material_override = _band_material()
 	band.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	band.position = Vector3(c.x - side * (box.size.x - bw) * 0.5, c.y, face + out * 0.0005)
+	band.position = Vector3(c.x - side * (box.size.x - bw) * 0.5, c.y, face + out * 0.0015)
 	band.rotation.y = q.rotation.y
 	parent.add_child(band)
 	var l := Label3D.new()
@@ -364,7 +367,7 @@ func _add_plate(parent: Node3D, box: AABB, rear: bool) -> void:
 	l.outline_size = 0
 	l.modulate = Color(0.05, 0.06, 0.09)
 	l.alpha_cut = Label3D.ALPHA_CUT_DISCARD
-	l.position = Vector3(c.x + side * bw * 0.5, c.y, face + out * 0.001)
+	l.position = Vector3(c.x + side * bw * 0.5, c.y, face + out * 0.003)
 	l.rotation.y = 0.0 if rear else PI
 	l.set_meta("w", box.size.x - bw)
 	l.set_meta("h", box.size.y)
@@ -383,9 +386,9 @@ static func _band_material() -> Material:
 
 ## Night makes every car's lamps glow brighter (shared materials).
 static func set_night(on: bool) -> void:
-	(shared_material("Headlight") as StandardMaterial3D).emission_energy_multiplier = 5.0 if on else 1.2
-	(shared_material("TailOff") as StandardMaterial3D).emission_energy_multiplier = 3.5 if on else 1.6
-	(shared_material("TailOn") as StandardMaterial3D).emission_energy_multiplier = 9.0 if on else 5.0
+	(shared_material("Headlight") as StandardMaterial3D).emission_energy_multiplier = 5.0 if on else 2.6
+	(shared_material("TailOff") as StandardMaterial3D).emission_energy_multiplier = 2.2 if on else 1.0
+	(shared_material("TailOn") as StandardMaterial3D).emission_energy_multiplier = 14.0 if on else 12.0
 	(shared_material("TailLens") as StandardMaterial3D).emission_energy_multiplier = 0.8 if on else 0.25
 
 
@@ -472,6 +475,16 @@ func set_brake(on: bool) -> void:
 	var m := shared_material("TailOn" if on else "TailOff")
 	for slot in _tail_slots:
 		(slot[0] as MeshInstance3D).set_surface_override_material(slot[1], m)
+	if brake_glow:
+		if _brake_light == null:
+			_brake_light = OmniLight3D.new()
+			_brake_light.light_color = Color(1.0, 0.05, 0.02)
+			_brake_light.light_energy = 1.6
+			_brake_light.omni_range = 3.5
+			_brake_light.shadow_enabled = false
+			add_child(_brake_light)
+		_brake_light.position = Vector3(0, 0.55, length * 0.5 + 0.6)
+		_brake_light.visible = on
 
 
 ## dir: -1 left, 1 right, 0 off, 2 hazard lights (both sides).

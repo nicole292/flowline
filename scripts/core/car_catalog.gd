@@ -9,48 +9,48 @@ const PLAYER_CARS := [
 	 "paint": Color(0.05, 0.17, 0.50), "length": 4.48, "width": 1.92,
 	 "blurb": "Balanced and forgiving. The car that starts it all.",
 	 "stats": {"top_speed": 56.0, "accel": 7.6, "brake_decel": 13.0,
-			   "lat_max": 7.0, "steer_response": 5.2, "lat_grip": 15.0}},
+			   "lat_max": 8.0, "steer_response": 10.4, "lat_grip": 30.0}},
 	{"id": "kestrel", "name": "Kestrel RS", "class": "Hot hatch", "price": 12000,
 	 "paint": Color(0.80, 0.10, 0.07), "length": 4.06, "width": 1.82,
 	 "blurb": "Small, light and twitchy. Darts between lanes.",
 	 "stats": {"top_speed": 58.0, "accel": 8.4, "brake_decel": 14.0,
-			   "lat_max": 7.8, "steer_response": 6.2, "lat_grip": 16.5}},
+			   "lat_max": 9.0, "steer_response": 12.4, "lat_grip": 33.0}},
 	{"id": "meridian", "name": "Meridian S", "class": "Super saloon", "price": 26000,
 	 "paint": Color(0.09, 0.09, 0.10), "length": 4.86, "width": 1.89,
 	 "blurb": "Four doors, quad pipes and a lot more power than it shows.",
 	 "stats": {"top_speed": 64.0, "accel": 8.8, "brake_decel": 14.0,
-			   "lat_max": 7.0, "steer_response": 5.2, "lat_grip": 15.5}},
+			   "lat_max": 8.0, "steer_response": 10.4, "lat_grip": 31.0}},
 	{"id": "brute", "name": "Brute 8", "class": "Muscle", "price": 45000,
 	 "paint": Color(0.88, 0.50, 0.04), "length": 4.78, "width": 1.96,
 	 "blurb": "Huge straight-line speed. Heavy in the lane changes.",
 	 "stats": {"top_speed": 70.0, "accel": 10.0, "brake_decel": 13.0,
-			   "lat_max": 6.8, "steer_response": 4.8, "lat_grip": 14.5}},
+			   "lat_max": 7.8, "steer_response": 9.6, "lat_grip": 29.0}},
 	{"id": "halcyon", "name": "Halcyon GT", "class": "Grand tourer", "price": 80000,
 	 "paint": Color(0.05, 0.22, 0.17), "length": 4.76, "width": 1.97,
 	 "blurb": "A long-nosed fastback built for flat-out highway runs.",
 	 "stats": {"top_speed": 74.0, "accel": 10.5, "brake_decel": 15.0,
-			   "lat_max": 7.4, "steer_response": 5.6, "lat_grip": 16.5}},
+			   "lat_max": 8.5, "steer_response": 11.2, "lat_grip": 33.0}},
 	{"id": "solstice", "name": "Solstice", "class": "Supercar", "price": 140000,
 	 "paint": Color(0.82, 0.82, 0.84), "length": 4.56, "width": 2.02,
 	 "blurb": "Mid-engine, low and sharp. Changes lanes like a thought.",
 	 "stats": {"top_speed": 80.0, "accel": 11.5, "brake_decel": 16.5,
-			   "lat_max": 8.0, "steer_response": 6.4, "lat_grip": 18.0}},
+			   "lat_max": 9.2, "steer_response": 12.8, "lat_grip": 36.0}},
 	{"id": "vortex", "name": "Vortex", "class": "Hypercar", "price": 250000,
 	 "paint": Color(0.95, 0.38, 0.05), "length": 4.72, "width": 2.08,
 	 "blurb": "The wing is not for show. The fastest thing on the road.",
 	 "stats": {"top_speed": 88.0, "accel": 13.0, "brake_decel": 18.0,
-			   "lat_max": 8.4, "steer_response": 6.8, "lat_grip": 19.5}},
+			   "lat_max": 9.7, "steer_response": 13.6, "lat_grip": 39.0}},
 	# ---- motorcycles: after all the cars in the garage
 	{"id": "nomad", "name": "Nomad 900", "class": "Roadster bike", "price": 18000, "kind": "bike",
 	 "paint": Color(0.20, 0.22, 0.20), "length": 2.0, "width": 0.8,
 	 "blurb": "Upright and light. Slips through gaps no car can.",
 	 "stats": {"top_speed": 61.0, "accel": 9.4, "brake_decel": 13.5,
-			   "lat_max": 8.4, "steer_response": 7.0, "lat_grip": 17.0}},
+			   "lat_max": 9.7, "steer_response": 14.0, "lat_grip": 34.0}},
 	{"id": "raptor", "name": "Raptor RR", "class": "Sport bike", "price": 110000, "kind": "bike",
 	 "paint": Color(0.10, 0.45, 0.85), "length": 2.05, "width": 0.8,
 	 "blurb": "Full fairing, tucked in, and a lot of revs. Lane splitting at speed.",
 	 "stats": {"top_speed": 78.0, "accel": 12.0, "brake_decel": 15.5,
-			   "lat_max": 8.8, "steer_response": 7.2, "lat_grip": 18.5}},
+			   "lat_max": 10.1, "steer_response": 14.4, "lat_grip": 37.0}},
 ]
 
 ## Garage paint palette: [name, colour].
@@ -85,13 +85,21 @@ const TRAFFIC := [
 	{"id": "kestrel", "length": 4.06, "width": 1.82, "weight": 0.3, "speed_mul": 1.05},
 ]
 
-## Realistic traffic paint distribution: mostly greyscale, a few colours.
+## Traffic paint: bright, cheerful colours (playtest: grey cars all looked
+## the same and vanished in the haze), with a few whites and blacks.
 const TRAFFIC_PAINTS := [
-	[Color(0.85, 0.85, 0.84), 5.0], [Color(0.05, 0.05, 0.055), 4.0],
-	[Color(0.55, 0.56, 0.58), 4.0], [Color(0.30, 0.31, 0.33), 3.0],
-	[Color(0.08, 0.14, 0.32), 1.6], [Color(0.48, 0.05, 0.05), 1.3],
-	[Color(0.20, 0.28, 0.24), 0.7], [Color(0.55, 0.45, 0.32), 0.6],
-	[Color(0.78, 0.62, 0.10), 0.3], [Color(0.25, 0.42, 0.62), 0.6],
+	[Color(1.0, 0.76, 0.04), 1.2],   # racing yellow
+	[Color(1.0, 0.40, 0.04), 1.2],   # orange
+	[Color(0.86, 0.06, 0.05), 1.2],  # red
+	[Color(0.95, 0.16, 0.52), 0.9],  # hot pink
+	[Color(0.48, 0.16, 0.80), 0.9],  # purple
+	[Color(0.06, 0.36, 0.98), 1.2],  # electric blue
+	[Color(0.30, 0.66, 0.98), 0.9],  # sky blue
+	[Color(0.0, 0.68, 0.62), 0.9],   # teal
+	[Color(0.42, 0.86, 0.12), 1.0],  # lime
+	[Color(0.55, 0.92, 0.72), 0.6],  # mint
+	[Color(0.92, 0.92, 0.90), 1.0],  # white
+	[Color(0.05, 0.05, 0.055), 0.5], # black
 ]
 
 
@@ -130,7 +138,18 @@ static func model_path(id: String) -> String:
 	return "res://assets/vehicles/%s.glb" % id
 
 
-static func random_paint(rng: RandomNumberGenerator) -> Color:
+## A traffic colour, re-picked if it is one of `avoid` (the last few
+## used), so neighbouring cars never share a colour.
+static func random_paint(rng: RandomNumberGenerator, avoid: Array = []) -> Color:
+	var c := _weighted_paint(rng)
+	for i in 8:
+		if not avoid.has(c):
+			break
+		c = _weighted_paint(rng)
+	return c
+
+
+static func _weighted_paint(rng: RandomNumberGenerator) -> Color:
 	var total := 0.0
 	for p in TRAFFIC_PAINTS:
 		total += float(p[1])

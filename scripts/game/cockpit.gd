@@ -22,6 +22,16 @@ var _wrists: Array[Node3D] = []
 var _shoulders: Array[Vector3] = []
 var _arms: Array[MeshInstance3D] = []
 var _skin := StandardMaterial3D.new()
+## Rear-view mirror: a small camera looking backwards renders into a
+## viewport shown on the modelled mirror glass (only while this view is on).
+const LAYER := 2           ## the cockpit's own render layer; the mirror camera skips it
+var _mirror_vp: SubViewport
+var _mirror_cam: Camera3D
+var _mirror_mat: StandardMaterial3D
+var _mirrors: Array[MeshInstance3D] = []
+## Slow device (graphics lowered): the mirror refreshes every other frame.
+var low_cost := false
+var _mirror_tick := 0
 
 
 ## Rebuilds the rig for a car or a bike, painted like the vehicle.
@@ -63,7 +73,87 @@ func build(is_bike: bool, paint: Material) -> void:
 		_arms.append(arm)
 	if not bike:
 		_add_cabin_shade()
+	for a in _arms:
+		a.layers = LAYER
+	_build_mirrors()
 	update(0.0)
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_VISIBILITY_CHANGED and _mirror_vp:
+		_mirror_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS if is_visible_in_tree() 				else SubViewport.UPDATE_DISABLED
+
+
+## Finds the modelled mirror glass (material "Mirror") and lays the live
+## rear view over it. A car has one mirror; a bike two, each showing its side.
+func _build_mirrors() -> void:
+	for m in _mirrors:
+		m.queue_free()
+	_mirrors.clear()
+	if _mirror_vp == null:
+		_mirror_vp = SubViewport.new()
+		_mirror_vp.size = Vector2i(320, 80)
+		_mirror_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+		add_child(_mirror_vp)
+		_mirror_cam = Camera3D.new()
+		_mirror_cam.cull_mask = 1   # the world only, not this cabin
+		_mirror_cam.fov = 20.0
+		_mirror_cam.near = 0.5
+		_mirror_cam.far = 400.0
+		_mirror_vp.add_child(_mirror_cam)
+		_mirror_mat = StandardMaterial3D.new()
+		_mirror_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_mirror_mat.albedo_texture = _mirror_vp.get_texture()
+	var boxes: Array[AABB] = []
+	for mi in _model.find_children("*", "MeshInstance3D", true, false):
+		var mesh: Mesh = (mi as MeshInstance3D).mesh
+		var xf := _to_cockpit(mi as Node3D)
+		for i in mesh.get_surface_count():
+			var src := mesh.surface_get_material(i)
+			if src == null or src.resource_name != "Mirror":
+				continue
+			var sides := [-1.0, 1.0] if bike else [0.0]
+			for side in sides:
+				var box := AABB()
+				var first := true
+				for v in mesh.surface_get_arrays(i)[Mesh.ARRAY_VERTEX]:
+					var p: Vector3 = xf * v
+					if side != 0.0 and signf(p.x) != side:
+						continue
+					box = AABB(p, Vector3.ZERO) if first else box.expand(p)
+					first = false
+				if not first:
+					boxes.append(box)
+	for box in boxes:
+		var q := MeshInstance3D.new()
+		var qm := QuadMesh.new()
+		qm.size = Vector2(box.size.x, box.size.y)
+		q.mesh = qm
+		var mat := _mirror_mat
+		if bike:  # each bike mirror shows its own half of the view
+			mat = _mirror_mat.duplicate()
+			var left := box.get_center().x < 0.0
+			mat.uv1_scale = Vector3(-0.5, 1, 1)
+			mat.uv1_offset = Vector3(0.5 if left else 1.0, 0, 0)
+		else:
+			mat.uv1_scale = Vector3(-1, 1, 1)   # mirrored left-right, like real glass
+			mat.uv1_offset = Vector3(1, 0, 0)
+		q.material_override = mat
+		q.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		q.layers = LAYER
+		# The face nearest the eye (the eye is the origin, looking down -z).
+		q.position = Vector3(box.get_center().x, box.get_center().y, box.end.z + 0.0015)
+		add_child(q)
+		_mirrors.append(q)
+
+
+func _to_cockpit(n: Node3D) -> Transform3D:
+	var xf := Transform3D.IDENTITY
+	var cur: Node = n
+	while cur and cur != self:
+		xf = (cur as Node3D).transform * xf
+		cur = cur.get_parent()
+	return xf
 
 
 ## The rest of the cabin is never seen, but its roof and doors still keep
@@ -86,6 +176,7 @@ func _paint(n: Node, paint: Material) -> void:
 	if n is MeshInstance3D:
 		var mi := n as MeshInstance3D
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.layers = LAYER
 		for i in mi.mesh.get_surface_count():
 			var src := mi.mesh.surface_get_material(i)
 			if src and src.resource_name == "Paint":
@@ -109,6 +200,15 @@ func set_skin(tone: String) -> void:
 func update(steer: float) -> void:
 	if _wheel == null:
 		return
+	if _mirror_cam:  # from just above the eye, looking straight back
+		var b := global_basis.orthonormalized()
+		_mirror_cam.global_transform = Transform3D(b * Basis(Vector3.UP, PI), global_position + b.y * 0.12)
+		if is_visible_in_tree():
+			_mirror_tick += 1
+			var mode := SubViewport.UPDATE_ALWAYS
+			if low_cost:
+				mode = SubViewport.UPDATE_ONCE if _mirror_tick % 2 == 0 else SubViewport.UPDATE_DISABLED
+			_mirror_vp.render_target_update_mode = mode
 	if bike:
 		_wheel.rotation.y = -steer * BAR_TURN
 	else:

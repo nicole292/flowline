@@ -3,6 +3,8 @@ shader_type spatial;
 // colour variation, and a gravel verge (Gravel023) next to the road.
 // All periods divide the 1200 m rebase distance.
 
+#include "res://shaders/bend.gdshaderinc"
+
 uniform sampler2D grass_tex : source_color, repeat_enable, filter_linear_mipmap_anisotropic;
 uniform sampler2D grass_nrm : hint_normal, repeat_enable, filter_linear_mipmap_anisotropic;
 uniform sampler2D gravel_tex : source_color, repeat_enable, filter_linear_mipmap_anisotropic;
@@ -19,6 +21,7 @@ varying vec3 wpos;
 
 void vertex() {
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	bend_vertex(wpos.z, VERTEX, NORMAL);
 }
 
 void fragment() {

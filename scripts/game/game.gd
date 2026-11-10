@@ -21,11 +21,21 @@ extends Node3D
 ##   --wreck-at=M      first crash site after M metres (default 900)
 ##   --steer=MODE      buttons (arrows) | wheel | tilt (GYRO) steering
 ##   --no-hud          hide all 2D UI (clean shots for store graphics)
+##   --road-at=M       start M metres into the road plan (bends, tunnels: first tunnel ~2040 m)
+##   --supersample=K   render 3D at K x the window resolution (store screenshots)
+##   --no-autopause    keep driving when the window loses focus (recordings)
+##   --slow=MS         add MS to every frame (tests the automatic quality step-down)
+##   --slow-gpu=MS     add MS x (3D scale)^2 to every frame (a GPU-bound phone)
 ##   --crash-at=S,...  force a crash into the nearest car ahead at S seconds (dents, the last one wrecks)
 
 enum State { MENU, PLAYING, PAUSED, CRASHING, RESULTS }
 
 const UI_PHONE_SCALE := 1.3
+## Menus need about this many layout units of width. Squarer screens
+## (iPads 4:3, Android tablets 16:10, older 16:9 phones) get less than the
+## full phone enlargement, so nothing is pushed off the right edge.
+const UI_MIN_WIDTH := 1180.0
+var _phone_ui := false
 const CRASH_TIME := 3.0     ## real seconds from impact to the results (tap skips)
 const CHECKPOINT_M := 2000.0
 ## Camera views, in the order the in-game camera button cycles them.
@@ -83,19 +93,46 @@ var _wrecks: Array[Dictionary] = []      # cars knocked aside, animated, no coll
 var _args := {}
 var _shots: Array[float] = []
 var _frame_times: PackedFloat32Array = []
+## Automatic 3D resolution: slower phones drop render resolution until the
+## game holds its frame rate (the HUD stays sharp). 1.0 = native.
+var _auto_scale := 1.0
+var _perf_t := 0.0
+var _perf_frames := 0
+var _perf_slow := 0
+var _shadows_cut := false
+var _scale_done := false      ## lowering resolution did not help on this device
+var _perf_done := false       ## stopped adapting
+var _perf_last := ""          ## the step taken after the last window: "scale" | "shadows" | ""
+var _perf_prev_fps := 0.0     ## frame rate before that step
+const AUTO_SCALE_MIN := 0.6
+const MAX_STEP_DT := 0.05     ## longer frames (hitches) are simulated as 50 ms
+var _run_dt := 0.0            ## unclamped frame time (the bench measures real frames)
+## Bends: in a curve the car is pushed gently to the outside, so you steer a
+## little to hold your lane (m/s sideways per m/s^2 of cornering).
+const CURVE_PUSH := 0.25
+var _bent: Array = []         ## [node, its straight transform] bent onto the curve this frame
+var _lights_on := false
+var _recent_paints: Array = []
 var _run_time := 0.0
 
 
 func _ready() -> void:
 	_parse_args()
 	_setup_input()
+	# Android phones span 60-144 Hz screens and much weaker GPUs than iPhones;
+	# a steady 60 (paced by Swappy) looks smoother than a rate that keeps
+	# dropping between 120 and 40, and the phone stays cooler, so no
+	# thermal slow-down after a few minutes.
+	if OS.get_name() == "Android":
+		Engine.max_fps = 60
 	# Phones get a gas pedal; a mouse can't hold gas and steer at once.
 	var phone := OS.has_feature("mobile") or OS.has_feature("web_android") or OS.has_feature("web_ios")
 	save.settings["gas"] = "pedal" if phone else "auto"
 	# A phone screen is small in the hand: draw all menus and the HUD 1.3x
 	# larger there (the layouts then see about 985 x 554 units).
-	if phone or _args.has("phone"):
-		get_tree().root.content_scale_factor = UI_PHONE_SCALE
+	_phone_ui = phone or _args.has("phone")
+	_update_ui_scale()
+	get_tree().root.size_changed.connect(_update_ui_scale)
 	save.load_from_disk()
 	if _args.has("steer"):  # harness: buttons | wheel | tilt (GYRO)
 		save.settings["controls"] = _args["steer"]
@@ -108,6 +145,8 @@ func _ready() -> void:
 			save.owned_cars.append(_args["car"])
 		save.selected_car = _args["car"]
 	world = HighwayWorld.new()
+	if _args.has("road-at"):
+		world.curve.offset = float(_args["road-at"])
 	add_child(world)
 	world.build()
 	camera = ChaseCamera.new()
@@ -120,6 +159,7 @@ func _ready() -> void:
 	player_root = Node3D.new()
 	add_child(player_root)
 	player_view = CarVisual.new()
+	player_view.brake_glow = true
 	player_root.add_child(player_view)
 	_show_car(save.selected_car, CarCatalog.paint_for(save.selected_car, save.paint_index(save.selected_car)),
 			save.rim_index(save.selected_car))
@@ -233,12 +273,86 @@ func _apply_settings() -> void:
 	_apply_camera()
 	if OS.has_feature("web") and save.settings.get("controls", "buttons") == "tilt":
 		JavaScriptBridge.eval("window.__wantMotion = true")  # lets the page ask iOS for motion access
-	var high: bool = save.settings.get("quality", "high") == "high"
-	world.set_quality(high)
-	get_viewport().scaling_3d_scale = 1.0 if high else 0.75
+	_apply_quality()
 	if state == State.MENU:
 		_show_car(save.selected_car, CarCatalog.paint_for(save.selected_car, save.paint_index(save.selected_car)),
 				save.rim_index(save.selected_car))
+
+
+func _apply_quality() -> void:
+	var high: bool = save.settings.get("quality", "high") == "high"
+	world.set_quality(high and not _shadows_cut)
+	get_viewport().scaling_3d_scale = (1.0 if high else 0.75) * _auto_scale
+	if _args.has("supersample"):  # store screenshots: render 3D at this multiple, sharper when upscaled
+		get_viewport().scaling_3d_scale = float(_args["supersample"])
+	cockpit.low_cost = not high or _shadows_cut or _auto_scale < 0.999
+
+
+## Watches the frame rate while driving. If over 3 s more than a quarter of
+## frames miss the target (60 fps, or the screen's rate if lower), the 3D
+## image is rendered 10% smaller, down to 60%; after that the sun shadows go.
+## Every step must buy at least 5% more frames, or it is undone: a phone
+## held back by its CPU (or an emulator) would only get blurrier.
+## Fast phones (and the iPhone) never trigger it.
+func _watch_performance(real_dt: float) -> void:
+	if _run_time < 3.0 or _perf_done or _args.has("bench"):
+		return
+	var hz := DisplayServer.screen_get_refresh_rate()
+	var target := 1.0 / clampf(hz if hz > 0.0 else 60.0, 30.0, 60.0)
+	_perf_t += real_dt
+	_perf_frames += 1
+	if real_dt > target * 1.35:
+		_perf_slow += 1
+	if _perf_t < 3.0:
+		return
+	var fps := _perf_frames / _perf_t
+	var slow := _perf_slow * 4 > _perf_frames
+	if slow and _perf_last != "" and fps < _perf_prev_fps * 1.05:
+		if _perf_last == "scale":  # resolution is not the bottleneck: back up, try shadows
+			_auto_scale = minf(1.0, _auto_scale + 0.1)
+			_scale_done = true
+		else:  # nothing helps: put everything back and stop watching
+			_shadows_cut = false
+			_perf_done = true
+		_perf_last = ""
+		_apply_quality()
+		print("auto quality: no gain (%.0f fps), undone: 3D scale %.2f, sun shadows %s" % [
+				fps, _auto_scale, not _shadows_cut])
+	elif slow:
+		if not _scale_done and _auto_scale > AUTO_SCALE_MIN + 0.001:
+			_auto_scale = maxf(AUTO_SCALE_MIN, _auto_scale - 0.1)
+			_perf_last = "scale"
+		elif not _shadows_cut:
+			_shadows_cut = true
+			_perf_last = "shadows"
+		else:
+			_perf_done = true
+		_perf_prev_fps = fps
+		_apply_quality()
+		print("auto quality: %.0f fps -> 3D scale %.2f, sun shadows %s" % [fps, _auto_scale, not _shadows_cut])
+	else:
+		_perf_last = ""
+	_perf_t = 0.0
+	_perf_frames = 0
+	_perf_slow = 0
+
+
+## Phone UI enlargement, as large as the screen's shape allows (see UI_MIN_WIDTH).
+## Also runs when the window changes (rotation, split screen, resizing).
+func _update_ui_scale() -> void:
+	var root := get_tree().root
+	var k := 1.0
+	if _phone_ui:
+		var win := Vector2(DisplayServer.window_get_size())
+		if win.x > 0.0 and win.y > 0.0:
+			k = clampf(ui_width_units(win) / UI_MIN_WIDTH, 1.0, UI_PHONE_SCALE)
+	if not is_equal_approx(root.content_scale_factor, k):
+		root.content_scale_factor = k
+
+
+## Layout width at scale 1 for a window (1280 x 720 base, stretch "expand").
+static func ui_width_units(win: Vector2) -> float:
+	return 720.0 * win.x / win.y if win.x / win.y >= 1280.0 / 720.0 else 1280.0
 
 
 ## Loads (or recolours) the car shown in the menu and driven in a run.
@@ -280,6 +394,7 @@ func _enter_menu() -> void:
 	cockpit.visible = false
 	_set_env(save.last_env if save.level() >= menu._env_need(save.last_env) else "day")
 	player_view.set_headlights(world.is_night)
+	_lights_on = world.is_night
 	player_view.set_fill_light(world.is_night)
 	_reset_player()
 	_show_car(save.selected_car, CarCatalog.paint_for(save.selected_car, save.paint_index(save.selected_car)),
@@ -324,6 +439,7 @@ func start_run(m := "endless", e := "day") -> void:
 	_next_cp = CHECKPOINT_M
 	_checkpoints = 0
 	player_view.set_headlights(world.is_night)
+	_lights_on = world.is_night
 	player_view.set_fill_light(world.is_night)
 	camera.h_offset = 0.0
 	_apply_camera()
@@ -369,7 +485,7 @@ func set_paused(on: bool) -> void:
 func _notification(what: int) -> void:
 	# Phones: pause when the app is backgrounded or interrupted.
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_APPLICATION_PAUSED:
-		if state == State.PLAYING:
+		if state == State.PLAYING and not _args.has("no-autopause"):
 			set_paused(true)
 		save.save_to_disk()
 	elif what == NOTIFICATION_WM_CLOSE_REQUEST:
@@ -419,11 +535,20 @@ func _on_spawn(a: TrafficSim.Agent) -> void:
 	else:
 		v = pool.pop_back()
 		v.visible = true
-	v.set_paint(CarCatalog.random_paint(sim.rng))
+	v.set_paint(_next_paint())
 	v.position = Vector3(a.x, 0, a.z)
 	v.rotation = Vector3(0, PI if a.dir > 0 else 0.0, 0)
 	_views[a.id] = v
 	_prev_x[a.id] = a.x
+
+
+## Traffic colour, never one of the last three handed out.
+func _next_paint() -> Color:
+	var c := CarCatalog.random_paint(sim.rng, _recent_paints)
+	_recent_paints.append(c)
+	if _recent_paints.size() > 3:
+		_recent_paints.pop_front()
+	return c
 
 
 ## A crash-site car: its own crushed model (or the patrol car), parked
@@ -434,7 +559,7 @@ func _spawn_wreck_view(a: TrafficSim.Agent) -> void:
 	add_child(v)
 	v.setup(id if a.police else WRECK_MODELS.get(id, id), Color(0.92, 0.92, 0.93), true)
 	if not a.police:
-		v.set_paint(CarCatalog.random_paint(sim.rng))
+		v.set_paint(_next_paint())
 	v.set_headlights(a.police and world.is_night)
 	v.position = Vector3(a.x, 0, a.z)
 	v.rotation = Vector3(0, a.yaw, 0.0 if a.police else sim.rng.randf_range(-0.035, 0.035))
@@ -508,8 +633,18 @@ func _warm_up() -> void:
 	cockpit.position = cam.basis.inverse() * (hide_at - cam.origin)
 	cockpit.visible = true
 	crash_fx.impact(hide_at, Color.WHITE, 0.5)
+	# A short tunnel (its hill is 16 m tall, so deeper still), and the lights
+	# a run switches on later (brake glow; headlights in tunnels): the first
+	# draw of each costs a shader build, a visible stall on some devices.
+	var tunnel := world._build_tunnel(20.0)
+	tunnel.position = hide_at + Vector3(0, -30.0, 0)
+	temp.append(tunnel)
+	player_view.set_brake(true)
+	player_view.set_headlights(true)
 	for i in 3:
 		await get_tree().process_frame
+	player_view.set_brake(false)
+	player_view.set_headlights(_lights_on)
 	for ti in _pools:  # a run may have started meanwhile and taken some
 		for v: CarVisual in _pools[ti]:
 			v.visible = false
@@ -577,7 +712,7 @@ func _update_oncoming(dt: float) -> void:
 		else:
 			v = pool.pop_back()
 			v.visible = true
-		v.set_paint(CarCatalog.random_paint(sim.rng))
+		v.set_paint(_next_paint())
 		var x := HighwayWorld.OPP_CENTER + (lane - 1.5) * HighwayWorld.LANE_W
 		v.position = Vector3(x, 0, z)
 		v.rotation = Vector3(0, PI, 0)
@@ -616,14 +751,57 @@ func _sync_traffic(dt: float) -> void:
 # ------------------------------------------------------------------ main loop
 
 func _process(dt: float) -> void:
+	_run_dt = dt
+	# A hitch (shader compile, OS hiccup) must not teleport the traffic or
+	# skip the car through another one: long frames are simulated as 50 ms.
+	dt = minf(dt, MAX_STEP_DT)
+	_unbend()
 	match state:
 		State.MENU:
 			_menu_camera(dt)
 		State.PLAYING:
 			_drive(dt)
+			_watch_performance(_run_dt)
 		State.CRASHING:
 			_update_crash(dt)
+	_bend_scene()
 	_dev_harness(dt)
+
+
+## The game runs on a straight road; the bends are drawn. After everything
+## has moved, every separate object is shifted and turned onto the curve
+## (long meshes bend in their shaders). Next frame starts by putting them
+## back, so game logic only ever sees straight positions.
+func _bend_scene() -> void:
+	world.update_curve(camera.global_position.z)
+	var cam_z := camera.global_position.z
+	var nodes: Array[Node3D] = world.rigid_nodes()
+	nodes.append(player_root)
+	for v in _views.values():
+		nodes.append(v)
+	for o in _oncoming:
+		nodes.append(o["view"])
+	for w in _wrecks:
+		nodes.append(w["view"])
+	for id in _sites:
+		nodes.append(_sites[id]["node"])
+	for n in nodes:
+		if not is_instance_valid(n) or not n.visible:
+			continue
+		var d := cam_z - n.position.z
+		var b := world.bend_at(d)
+		if absf(b) < 0.001 and absf(world.bend_slope(d)) < 0.0001:
+			continue
+		_bent.append([n, n.transform])
+		n.transform = Transform3D(Basis(Vector3.UP, -atan(world.bend_slope(d))) * n.basis,
+				n.position + Vector3(b, 0, 0))
+
+
+func _unbend() -> void:
+	for e in _bent:
+		if is_instance_valid(e[0]):
+			(e[0] as Node3D).transform = e[1]
+	_bent.clear()
 
 
 ## Slow orbit on the home screen; a closer, draggable showroom view in the garage.
@@ -741,6 +919,10 @@ func _check_motion(dt: float) -> void:
 
 
 func _drive(dt: float) -> void:
+	# Rebase first, before anything is placed this frame: rebasing after the
+	# car was placed but before the camera followed it left the camera 1.2 km
+	# away for one frame (a flash of empty sky every ~20 s, worst at 60 Hz).
+	_maybe_rebase()
 	var inp := _input_state()
 	var throttle: float = inp[2]
 	model.step(dt, throttle, inp[1], inp[0])
@@ -755,6 +937,12 @@ func _drive(dt: float) -> void:
 		camera.kick(clampf(impact * 0.15, 0.1, 0.8), -signf(model.x))
 		hud.popup("SCRAPE", "Flow lost", Color(1, 0.4, 0.3))
 	player_z -= model.speed * dt
+	model.x -= world.curve.curvature(world.u_of(player_z)) * model.speed * model.speed * CURVE_PUSH * dt
+	# Lights on at night and in tunnels.
+	var lights := world.is_night or world.tunnel_t > 0.2
+	if lights != _lights_on:
+		_lights_on = lights
+		player_view.set_headlights(lights)
 	# Two-way: driving in the oncoming lanes doubles every point.
 	if mode == "twoway":
 		var against := model.x < -0.4 and model.speed > 20.0
@@ -813,7 +1001,6 @@ func _drive(dt: float) -> void:
 			_begin_crash(hit)
 		else:
 			_bump(hit)
-	_maybe_rebase()
 	world.update(player_z)
 	camera.follow(dt, player_root.position, model.speed, model.top_speed, model.long_accel, model.lat_vel)
 	audio.update_engine(dt, model.speed, model.top_speed, throttle, _scraping)
@@ -872,11 +1059,16 @@ func _maybe_rebase() -> void:
 	sim.shift(dz)
 	world.rebase(dz)
 	camera.global_position.z += dz
+	player_root.position.z += dz
+	audio.shift(dz)
+	for id in _sites:
+		(_sites[id]["node"] as Node3D).position.z += dz
 	for o in _oncoming:
 		o["z"] += dz
 		(o["view"] as CarVisual).position.z = o["z"]
 	for w in _wrecks:
 		w["z"] += dz
+		(w["view"] as CarVisual).position.z = w["z"]
 	for a in sim.agents:
 		var v: CarVisual = _views.get(a.id)
 		if v:
@@ -1174,12 +1366,21 @@ func _autopilot() -> Array:
 # ------------------------------------------------------------------ harness
 
 func _dev_harness(dt: float) -> void:
+	if _args.has("slow"):  # pretend to be a weak phone: every frame takes N ms longer
+		OS.delay_msec(int(_args["slow"]))
+	if _args.has("slow-gpu"):  # ...or one whose GPU is the limit (cost scales with pixels)
+		var sc := get_viewport().scaling_3d_scale
+		OS.delay_msec(int(float(_args["slow-gpu"]) * sc * sc))
 	if state == State.PLAYING or state == State.CRASHING or _args.has("menu"):
 		_run_time += dt
 		if _args.has("bench") and _run_time > 2.0:
-			_frame_times.append(dt)
-			if dt > 0.05:
-				print("HITCH %.1f ms at t=%.2f dist=%d traffic=%d" % [dt * 1000.0, _run_time, int(score.distance), sim.agents.size()])
+			_frame_times.append(_run_dt)
+			if _run_dt > 0.05:
+				print("HITCH %.1f ms at t=%.2f dist=%d traffic=%d" % [_run_dt * 1000.0, _run_time, int(score.distance), sim.agents.size()])
+	# Every rendered frame the camera must be near the car (catches world-rebase slips).
+	if _args.has("bench") and state == State.PLAYING and not _cockpit_on \
+			and absf(camera.global_position.z - player_z) > 40.0:
+		print("CAMERA OFF CAR by %.0f m at dist=%d" % [camera.global_position.z - player_z, int(score.distance)])
 	if state == State.PLAYING and _args.has("crash-at") and _run_time >= float(_args["crash-at"].split(",")[0]):
 		var rest: PackedStringArray = _args["crash-at"].split(",").slice(1)
 		if rest.is_empty():
