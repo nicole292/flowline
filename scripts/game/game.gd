@@ -27,6 +27,7 @@ extends Node3D
 ##   --slow=MS         add MS to every frame (tests the automatic quality step-down)
 ##   --slow-gpu=MS     add MS x (3D scale)^2 to every frame (a GPU-bound phone)
 ##   --crash-at=S,...  force a crash into the nearest car ahead at S seconds (dents, the last one wrecks)
+##   --restart         with --autopilot: start a new run as soon as the results show (--bench also reports a tilted car)
 
 enum State { MENU, PLAYING, PAUSED, CRASHING, RESULTS }
 
@@ -369,6 +370,10 @@ func _show_car(id: String, paint: Color, rim: int) -> void:
 # ------------------------------------------------------------------ states
 
 func _reset_player() -> void:
+	# Put bent objects back first: otherwise the next frame's _unbend()
+	# restores the pose saved before this reset (a wrecked car on a bend
+	# started the next run on its side or roof).
+	_unbend()
 	car_data = CarCatalog.player_car(save.selected_car)
 	model.configure(Progression.stats_for(car_data, save.car_levels(car_data["id"])))
 	model.speed = 0.0 if state == State.MENU else 22.0
@@ -1040,8 +1045,8 @@ func _vibrate(ms: int) -> void:
 
 
 func _update_player_view(dt: float, brake: float) -> void:
-	player_root.position = Vector3(model.x, 0, player_z)
-	player_root.rotation.y = -model.heading()
+	# Whole transform, never just the yaw, so no leftover roll can stick.
+	player_root.transform = Transform3D(Basis(Vector3.UP, -model.heading()), Vector3(model.x, 0, player_z))
 	var roll := clampf(model.lat_accel * 0.0045, -0.07, 0.07)
 	var pitch := clampf(model.long_accel * 0.0045, -0.05, 0.035)
 	player_view.animate(dt, model.speed, -model.steer_input * 0.22, roll, pitch)
@@ -1400,6 +1405,9 @@ func _dev_harness(dt: float) -> void:
 				_bump(near)
 	if state == State.RESULTS and _args.has("autopilot") and _args.has("restart"):
 		start_run(mode, env)
+	# The bend only yaws the car, so while driving it must stay upright.
+	if state == State.PLAYING and _args.has("bench") and player_root.basis.y.y < 0.995:
+		print("PLAYER TILTED at %.1f s: up=%s" % [_run_time, player_root.basis.y])
 	if not _shots.is_empty() and _run_time >= _shots[0] and (state != State.MENU or _args.has("menu")):
 		var t: float = _shots.pop_front()
 		_screenshot("%s_%05.1f.png" % [_args.get("shot-prefix", "user://shot"), t])
