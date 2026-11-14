@@ -253,12 +253,15 @@ def materials_for(paint):
         "Mirror": make_material("Mirror", (0.8, 0.82, 0.85), 1.0, 0.03),
         "Shield": shield_material(),
         "Skin": make_material("Skin", (0.62, 0.43, 0.33), 0.0, 0.5),
+        "Alu": make_material("Alu", (0.62, 0.63, 0.66), 1.0, 0.32),
+        "ScreenUI": make_material("ScreenUI", (0.05, 0.25, 0.45), 0.0, 0.2, emit=(0.2, 0.55, 1.0), emit_str=0.9),
+        "Stitch": make_material("Stitch", (0.55, 0.12, 0.06), 0.0, 0.7),
     }
 
 
 MAT_ORDER = ["Paint", "Glass", "Trim", "Chrome", "Tire", "Rim", "Headlight", "Taillight",
              "TailLens", "Plate", "Gloss", "Caliper", "Suit", "Accent", "Cracked", "Livery", "SirenRed",
-             "SirenBlue", "Gold", "Dash", "Leather", "Glove", "Dial", "Screen", "Headliner", "Mirror", "Shield", "Skin"]
+             "SirenBlue", "Gold", "Dash", "Leather", "Glove", "Dial", "Screen", "Headliner", "Mirror", "Shield", "Skin", "Alu", "ScreenUI", "Stitch"]
 
 
 def shield_material():
@@ -1651,21 +1654,89 @@ def cockpit_hands(name, grips, finger, lateral, pelvis, lean, mats, mat, parent,
     return human_object(name, verts, faces, dom, mats, lambda b, c, n: mat, keep=keep, target=6000)
 
 
+
+def _vent(mb, c, r, tip):
+    """Round eyeball air vent on the dash face: bezel, louvres, dark throat."""
+    s = len(mb.verts)
+    mb.revolve([(r, 0.0), (r, 0.01), (r * 0.82, 0.012)], 28, "Alu")
+    mb.revolve([(r * 0.82, -0.02), (r * 0.82, 0.004)], 28, "Trim")
+    mb.revolve([(r * 0.8, -0.015), (0.001, -0.015)], 28, "Trim")
+    for k in range(-2, 3):
+        mb.box((-0.004, 0.0, k * r * 0.3), (0.012, r * 1.55, 0.006), "Dash")
+    mb.box((0.0, 0.0, 0.0), (0.016, 0.008, r * 1.2), "Alu")
+    xform_since(mb, s, tip @ Matrix.Rotation(-math.pi / 2, 3, "Z"), c)
+
+
+def _cabin_details(mb, cx):
+    """What makes it read as the inside of a real car: brushed trim, vents,
+    a lit infotainment screen, climate knobs, door cards and wing mirrors."""
+    face_tip = Matrix.Rotation(math.radians(-17), 3, "X")
+    # Brushed metal strip across the dash face, broken by the wheel's column.
+    for x0, x1 in ((-0.82, -0.08), (0.08, 1.56)):
+        mb.box(((x0 + x1) / 2, 0.598, -0.445), (x1 - x0, 0.012, 0.016), "Alu")
+    # Contrast stitching along the top edge of the dash face.
+    tube(mb, (-0.82, 0.612, -0.352), (1.56, 0.612, -0.352), 0.0025, "Stitch", segs=5)
+    # Round vents at each end, twin slim vents under the centre screen.
+    _vent(mb, (-0.6, 0.6, -0.395), 0.045, Matrix.Identity(3))
+    _vent(mb, (1.34, 0.6, -0.395), 0.045, Matrix.Identity(3))
+    for x in (cx - 0.075, cx + 0.075):
+        mb.box((x, 0.598, -0.39), (0.12, 0.014, 0.035), "Alu")
+        mb.box((x, 0.59, -0.39), (0.108, 0.006, 0.026), "Trim")
+        for k in range(3):
+            mb.box((x, 0.586, -0.401 + k * 0.011), (0.104, 0.004, 0.003), "Dash")
+    # Infotainment: a map with a route on the left, three tiles on the right.
+    s = len(mb.verts)
+    mb.box((-0.045, 0, 0.0), (0.14, 0.002, 0.115), "ScreenUI")
+    mb.box((-0.06, -0.001, -0.01), (0.012, 0.002, 0.09), "Glove")
+    mb.box((-0.03, -0.001, 0.03), (0.07, 0.002, 0.01), "Glove")
+    for k in range(3):
+        mb.box((0.075, 0, 0.035 - k * 0.037), (0.085, 0.002, 0.028), "ScreenUI")
+        mb.box((0.06, -0.001, 0.035 - k * 0.037), (0.04, 0.002, 0.006), "Accent")
+    xform_since(mb, s, Matrix.Rotation(-0.35, 3, "X"), (cx, 0.7265, -0.269))
+    # Climate panel: two knobs with a row of buttons between them.
+    mb.box((cx, 0.596, -0.47), (0.26, 0.012, 0.07), "Gloss")
+    for x in (cx - 0.095, cx + 0.095):
+        k = len(mb.verts)
+        mb.revolve([(0.024, 0.0), (0.024, 0.022), (0.02, 0.026), (0.001, 0.026)], 24, "Alu")
+        xform_since(mb, k, Matrix.Rotation(-math.pi / 2, 3, "Z"), (x, 0.59, -0.47))
+    for i in range(4):
+        mb.box((cx - 0.045 + i * 0.03, 0.588, -0.47), (0.022, 0.008, 0.014), "Trim")
+    mb.box((cx, 0.588, -0.445), (0.02, 0.006, 0.012), "Caliper")  # hazard button
+    # Glovebox shut line on the passenger side.
+    mb.box((cx + 0.62, 0.597, -0.5), (0.5, 0.006, 0.004), "Trim")
+    # Door cards: armrest, chrome handle, speaker grille, window frame.
+    for side, x in ((-1, -0.70), (1, 1.44)):
+        mb.box((x, 0.25, -0.45), (0.06, 0.7, 0.05), "Leather")
+        mb.box((x + side * 0.03, 0.55, -0.37), (0.1, 0.8, 0.03), "Dash")  # window sill
+        mb.box((x - side * 0.03, 0.47, -0.36), (0.01, 0.13, 0.035), "Alu")
+        mb.box((x - side * 0.035, 0.3, -0.6), (0.01, 0.2, 0.12), "Trim")
+        tube(mb, (x - side * 0.02, 0.62, -0.40), (x - side * 0.04, 0.95, -0.38), 0.025, "Headliner")
+        # Wing mirror outside the side glass: arm, body-coloured shell, glass.
+        mx = x + side * 0.2
+        tube(mb, (x + side * 0.05, 0.88, -0.36), (mx, 0.9, -0.32), 0.022, "Paint")
+        ellipsoid(mb, (mx + side * 0.08, 0.93, -0.29), (0.12, 0.06, 0.075), "Paint")
+        ellipsoid(mb, (mx + side * 0.08, 0.875, -0.29), (0.105, 0.008, 0.062), "Chrome")
+    # Tweeter covers at the foot of each A-pillar.
+    for x in (-0.66, 1.40):
+        ellipsoid(mb, (x, 0.9, -0.36), (0.05, 0.05, 0.025), "Trim")
+
 def build_cockpit_car(mats):
     root = bpy.data.objects.new("cockpit_car", None)
     bpy.context.scene.collection.objects.link(root)
     cx = 0.37
     mb = MeshBuilder()
     # Dashboard: one soft-touch moulding across the car, with a stitched seam.
-    extrude_x(mb, [(0.62, -0.68), (0.60, -0.52), (0.63, -0.42), (0.72, -0.365), (0.90, -0.375),
+    extrude_x(mb, [(0.62, -0.68), (0.60, -0.52), (0.60, -0.37), (0.65, -0.325), (0.90, -0.34),
                    (1.20, -0.45), (1.24, -0.68)], -0.82, 1.56, "Dash", slices=16)
-    tube(mb, (-0.82, 0.715, -0.362), (1.56, 0.715, -0.362), 0.004, "Trim", segs=6)
     # Instrument cluster, seen through the top of the wheel: a dark face
     # plate leaning back, two lit dials and a cowl shading them.
     tip = Matrix.Rotation(math.radians(-20), 3, "X")
     mb.box((0, 0.80, -0.32), (0.38, 0.12, 0.13), "Dash")
     mb.box((0, 0.815, -0.205), (0.36, 0.02, 0.17), "Trim", rot=tip)
-    mb.box((0, 0.735, -0.118), (0.42, 0.2, 0.022), "Dash", rot=Matrix.Rotation(math.radians(6), 3, "X"))
+    # Binnacle hood: a rounded lip curling over the dials, like a moulded part.
+    extrude_x(mb, [(0.86, -0.29), (0.84, -0.14), (0.78, -0.105), (0.69, -0.098), (0.635, -0.112),
+                   (0.628, -0.128), (0.645, -0.126), (0.70, -0.118), (0.78, -0.126), (0.82, -0.16),
+                   (0.835, -0.29)], -0.215, 0.215, "Dash", slices=8)
     for sx in (-1, 1):  # cowl cheeks
         mb.box((sx * 0.2, 0.77, -0.2), (0.022, 0.16, 0.17), "Dash")
     for x in (-0.095, 0.095):
@@ -1677,8 +1748,9 @@ def build_cockpit_car(mats):
         # Built around +x; turn it to face the driver (-y), tipped up a little.
         xform_since(mb, s, tip @ Matrix.Rotation(-math.pi / 2, 3, "Z"), (x, 0.797, -0.19))
     # Centre screen, vents, console.
-    mb.box((cx, 0.74, -0.33), (0.26, 0.012, 0.15), "Trim", rot=Matrix.Rotation(-0.35, 3, "X"))
-    mb.box((cx, 0.733, -0.329), (0.24, 0.004, 0.13), "Screen", rot=Matrix.Rotation(-0.35, 3, "X"))
+    mb.box((cx, 0.74, -0.27), (0.26, 0.012, 0.15), "Trim", rot=Matrix.Rotation(-0.35, 3, "X"))
+    mb.box((cx, 0.733, -0.269), (0.24, 0.004, 0.13), "Screen", rot=Matrix.Rotation(-0.35, 3, "X"))
+    mb.box((cx, 0.76, -0.33), (0.12, 0.04, 0.05), "Trim")  # screen stand
     mb.box((cx, 0.45, -0.66), (0.26, 0.5, 0.16), "Dash")
     # Door top and window sill on the driver's side.
     extrude_x(mb, [(0.0, -0.75), (0.0, -0.40), (0.05, -0.36), (0.6, -0.38), (0.6, -0.75)], -0.74, -0.62, "Dash", 2)
@@ -1699,6 +1771,7 @@ def build_cockpit_car(mats):
                 (2.85, -0.73, 0.66, 0.04)], "Paint", cx=cx, n=5.0)
     for x in (cx - 0.35, cx + 0.2):
         tube(mb, (x, 1.24, -0.46), (x + 0.42, 1.26, -0.47), 0.008, "Trim", segs=6)
+    _cabin_details(mb, cx)
     dash = mb.build("Dash", mats)
     dash.parent = root
     dash.data.set_sharp_from_angle(angle=math.radians(40))

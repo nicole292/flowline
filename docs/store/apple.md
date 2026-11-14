@@ -6,7 +6,7 @@ Everything to paste into App Store Connect. Screenshots are in `docs/store/apple
 | Field | Value |
 |---|---|
 | Platform | iOS |
-| Name | FLOWLINE: Highway Racer |
+| Name | FLOWLINE: Near-Miss Drive |
 | Primary language | English (U.S.) |
 | Bundle ID | com.elishakov.flowline |
 | SKU | flowline-ios-001 |
@@ -15,7 +15,7 @@ Everything to paste into App Store Connect. Screenshots are in `docs/store/apple
 ## App Information
 | Field | Value |
 |---|---|
-| Subtitle (max 30) | Weave through highway traffic |
+| Subtitle (max 30) | Fill the Flow, score double |
 | Category | Games, subcategories Racing and Arcade |
 | Secondary category | (none) |
 | Content rights | Yes, it contains third-party content, and I have the rights (free CC0 textures and sky from Poly Haven and ambientCG, CC0 MakeHuman body) |
@@ -31,45 +31,51 @@ Price: Free (0). Availability: all countries.
 ## Version page (1.0 Prepare for Submission)
 
 **Promotional text** (max 170):
-Pass close, fill your Flow meter and score double. Cars and motorbikes, cockpit view, gyro steering, day and night highways. No ads, no accounts.
+Close passes fill your Flow meter. Fill it and every point counts double, until you bump. Bends, tunnels, crash sites and a real cockpit view. No ads, no accounts.
 
 **Description** (max 4000):
-Thread your car through rush-hour traffic at 250 km/h. Every close pass fills your Flow meter. Fill it and Flow Drive doubles your points, until you bump into something.
+FLOWLINE is a driving game about one thing: the close pass.
 
-HOW IT PLAYS
-• Near misses, overtakes and streaks score points. The closer, the more.
-• Fill the Flow meter for Flow Drive: double points until your next bump.
-• Bumps dent your car instead of ending the run. Keep driving, keep scoring.
-• Watch for crash sites ahead: police, cones and smoke close a lane.
+Every time you slip past a car with centimetres to spare, your Flow meter fills. Fill it and Flow Drive starts: every point counts double until the next time you touch another car. So you're not just driving fast, you're choosing how close to cut it.
 
-THREE WAYS TO DRIVE
-• Endless: how far and how fast can you go?
-• Two-way: oncoming traffic in the left lanes. Pass on the wrong side for big points.
+FLOW, NOT GAME OVER
+• Near misses fill the Flow meter. The closer the pass, the more it fills.
+• Flow Drive doubles every point until your next bump.
+• Bumps dent your car and break your Flow, but the run goes on. A full wreck ends it.
+
+A ROAD THAT CHANGES
+• Long sweeping bends and tunnels with their own lighting.
+• Crash sites ahead: police, cones and smoke close a lane, and traffic squeezes over.
+• Day, sunset and night.
+
+SIT INSIDE THE CAR
+• A full cockpit view: dashboard, lit dials and centre screen, your hands turning the wheel.
+• A working rear-view mirror that shows the traffic behind you.
+• Choose your hands' skin tone in Settings.
+
+THREE WAYS TO PLAY
+• Endless: how long can you keep the Flow going?
+• Two-way: oncoming traffic on the left. Pass on the wrong side for big points.
 • Time attack: race the clock from checkpoint to checkpoint.
 
-YOUR GARAGE
-• Cars and motorbikes to unlock, from a nimble starter to a supercar.
-• Upgrade engine, brakes and handling.
-• Paint, rims and your own number plate.
+CARS AND MOTORBIKES
+• Cars and motorbikes, each with its own handling. Bikes lean into the turns.
+• Upgrade engine, brakes and handling. Paint, rims and your own number plate.
+• Steering wheel, arrows or gyro steering. Chase, top and cockpit cameras.
 
-MADE FOR PHONES
-• Steering wheel, arrows or gyro (tilt) steering, gas and brake pedals or auto gas.
-• Chase, top and cockpit cameras, with your hands on the wheel.
-• Day, sunset and night highways.
-• Missions, daily rewards and levels.
-
-No ads. No accounts. No data collected. Plays offline.
+No ads. No purchases. No accounts. No data collected. Plays offline.
 
 **Keywords** (max 100, commas, no spaces; words already in the name are left out):
-traffic,car,driving,near miss,motorbike,speed,arcade,offline,endless,cockpit,overtake,lane,race
+flow,traffic,car,driving,motorbike,cockpit,tunnel,arcade,offline,endless,overtake,racing,highway
 
 | Field | Value |
 |---|---|
 | Support URL | https://nicole292.github.io/flowline/ |
 | Marketing URL | https://nicole292.github.io/flowline/ |
 | Copyright | 2026 Elishakov Studio |
-| iPhone 6.9" screenshots | `iphone-69-1.png` … `iphone-69-6.png` (2868 × 1320, landscape) |
-| iPad 13" screenshots | `ipad-13-1.png` … `ipad-13-6.png` (2732 × 2048, landscape). Needed since build 17: the game now runs full-screen on iPad |
+| iPhone 6.9" screenshots | `iphone-69-1.png` … `iphone-69-6.png` (2868 × 1320, landscape). Order matters: 1 Flow Drive, 2 cockpit with mirror, 3 bend with crash site warning, 4 tunnel, 5 motorbike, 6 garage |
+| iPhone 6.3" screenshots | `iphone-63-1.png` … `iphone-63-6.png` (2556 × 1179), same order |
+| iPad 13" screenshots | `ipad-13-1.png` … `ipad-13-6.png` (2732 × 2048, landscape). Needed since build 17: the game now runs full-screen on iPad. 1 Flow Drive, 2 cockpit, 3 crash site warning, 4 tunnel, 5 bend, 6 garage |
 | Build | the one Codemagic uploaded ("iOS release (TestFlight)") |
 
 **App Review Information**
@@ -82,7 +88,7 @@ SCREEN RECORDING (physical iPhone 13 Pro, iOS 26.7.2; recording starts at app la
 <paste video link here>
 
 1. PURPOSE AND AUDIENCE
-FLOWLINE: Highway Racer is an offline arcade driving game for casual players aged 4+ (racing fans, short play sessions). You weave a car or motorbike through highway traffic; close passes fill a "Flow" meter that doubles your points. It offers quick, skill-based entertainment that works anywhere without a connection.
+FLOWLINE: Near-Miss Drive is an offline arcade driving game for casual players aged 4+ (racing fans, short play sessions). You weave a car or motorbike through highway traffic; close passes fill a "Flow" meter that doubles your points. It offers quick, skill-based entertainment that works anywhere without a connection.
 
 2. HOW TO USE THE APP
 No account, login or setup is needed. Launch the app and tap PLAY.
@@ -108,3 +114,34 @@ Not a regulated industry. The game contains no licensed brands, real car makes o
 
 ## Export compliance
 Already answered inside the app (ITSAppUsesNonExemptEncryption = NO), so App Store Connect won't ask.
+
+## Guideline 4.3(a) "Spam" rejection (2026-11-14)
+Apple matched the app to the many template traffic racers. What changed for the resubmission: build 14 (fix: after a wreck on a bend the next run started with the car tilted), new name/subtitle/description/keywords above, new screenshots that lead with what no template has (Flow Drive, cockpit with live mirror, bends, tunnels, crash sites), a more detailed car interior.
+
+Reply to paste under the rejection in App Store Connect (App Review message):
+
+```
+Hello, and thank you for the review.
+
+FLOWLINE is not built from a template, purchased code or another app. It was written from scratch in the open-source Godot Engine, and no other app, ours or anyone else's, shares its code or assets. The full development history is public: https://github.com/nicole292/flowline
+
+All 3D cars, motorbikes, riders and the car interior are original models generated by our own Blender scripts. Sounds are our own mixes of CC0 recordings. No asset packs or template art are used.
+
+We know highway driving is a popular genre, so here is what FLOWLINE does that others don't:
+
+1. Flow Drive: close passes fill a Flow meter. When it's full, points double until your next bump, so the game rewards precise, risky driving rather than raw speed.
+2. Bumps don't end the run. They dent the car and break your Flow, and you keep driving.
+3. A living road: real bends and tunnels with lighting changes, and crash sites with police, cones and smoke that close lanes and make traffic move over.
+4. A full cockpit view: dashboard, lit dials, centre screen, modelled hands that turn the wheel (skin tone selectable), and a working rear-view mirror showing the traffic behind you.
+5. Cars and motorbikes with different handling (bikes lean), three steering styles (wheel, arrows, gyro), and three modes including Two-way and Time attack.
+6. Garage with upgrades, paint, rims and a custom number plate you type yourself.
+7. No ads, no purchases, no accounts, no data collected. Fully offline.
+
+With this resubmission we also changed the name, subtitle, description and screenshots so the store page shows these features first, and uploaded build 14, which fixes a bug where restarting after a wreck could leave the car tilted.
+
+If anything still looks too similar to another app, please tell us what you would need to see and we will change it.
+
+Thank you.
+```
+
+If this reply is rejected too: appeal to the App Review Board (developer.apple.com/contact/app-store/?topic=appeal).

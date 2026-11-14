@@ -28,6 +28,8 @@ extends Node3D
 ##   --slow-gpu=MS     add MS x (3D scale)^2 to every frame (a GPU-bound phone)
 ##   --crash-at=S,...  force a crash into the nearest car ahead at S seconds (dents, the last one wrecks)
 ##   --restart         with --autopilot: start a new run as soon as the results show (--bench also reports a tilted car)
+##   --flow-at=S       start Flow Drive at S seconds (store screenshots)
+##   --skin=TONE       hand skin tone in the cockpit view (light medium tan brown dark)
 
 enum State { MENU, PLAYING, PAUSED, CRASHING, RESULTS }
 
@@ -139,6 +141,8 @@ func _ready() -> void:
 		save.settings["controls"] = _args["steer"]
 	if _args.has("theme"):  # harness: light | dark
 		save.settings["theme"] = _args["theme"]
+	if _args.has("skin"):  # harness: light | medium | tan | brown | dark (cockpit hands)
+		save.settings["skin"] = _args["skin"]
 	if _args.has("cash"):
 		save.cash = int(_args["cash"])
 	if _args.has("car") and CarCatalog.has_player_car(_args["car"]):
@@ -1403,6 +1407,12 @@ func _dev_harness(dt: float) -> void:
 				_begin_crash(near)
 			else:
 				_bump(near)
+	if state == State.PLAYING and _args.has("flow-at") and _run_time >= float(_args["flow-at"]):
+		_args.erase("flow-at")
+		score.flow = 1.0
+		score.flow_active = true
+		hud.popup("FLOW DRIVE", "All points x2", Hud.FLOW_COL, true)
+		audio.flow_started()
 	if state == State.RESULTS and _args.has("autopilot") and _args.has("restart"):
 		start_run(mode, env)
 	# The bend only yaws the car, so while driving it must stay upright.
