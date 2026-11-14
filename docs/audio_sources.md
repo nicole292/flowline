@@ -6,7 +6,7 @@ commercial use, no attribution required). Sources are listed anyway.
 
 ## Engine (assets/audio/engine_low.wav, engine_high.wav)
 
-Built by `tools/audio/real_engine.py blend` from the Freesound pack
+Built by `tools/audio/real_engine.py exhaust` (exhaust mic only, since 2026-11-14) from the Freesound pack
 **"The Dyno Sessions: 190E"** by **Chippy569** — a Mercedes-Benz 190E 2.3-16V
 on a dynamometer at full load. CC0 1.0.
 

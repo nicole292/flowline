@@ -267,23 +267,45 @@ func set_rim(index: int) -> void:
 	_rim.roughness = r[3]
 
 
-## Two real headlight beams for the player's car at night.
+## Headlights for the player's car at night and in tunnels: two long main
+## beams that light the road far ahead (playtest: "make sure I can see the
+## road"), plus one wide low beam that floods the lanes just in front.
 func set_headlights(on: bool) -> void:
 	if on and _lights.is_empty():
+		var y := 0.95 if is_bike else 0.68
+		var z := -length * 0.5 + 0.1
 		for side in ([0.0] if is_bike else [-1.0, 1.0]):
 			var l := SpotLight3D.new()
-			l.light_color = Color(1.0, 0.95, 0.85)
-			l.light_energy = 7.0
-			l.spot_range = 70.0
-			l.spot_angle = 24.0
-			l.spot_attenuation = 0.8
+			l.light_color = Color(1.0, 0.96, 0.88)
+			l.light_energy = 22.0 if is_bike else 18.0
+			l.spot_range = 120.0
+			l.spot_angle = 22.0
+			l.spot_attenuation = 0.6
 			l.shadow_enabled = false
-			l.position = Vector3(side * width * 0.32, 0.95 if is_bike else 0.68, -length * 0.5 + 0.1)
-			l.rotation.x = deg_to_rad(-4.0)
+			l.position = Vector3(side * width * 0.32, y, z)
+			l.rotation.x = deg_to_rad(-2.2)
 			add_child(l)
 			_lights.append(l)
+		var low := SpotLight3D.new()
+		low.light_color = Color(1.0, 0.95, 0.86)
+		low.light_energy = 8.0
+		low.spot_range = 35.0
+		low.spot_angle = 48.0
+		low.spot_attenuation = 0.9
+		low.shadow_enabled = false
+		low.position = Vector3(0, y, z)
+		low.rotation.x = deg_to_rad(-9.0)
+		add_child(low)
+		_lights.append(low)
 	for l in _lights:
 		l.visible = on
+
+
+## Hides the car itself (cockpit view) but keeps its lights shining.
+func set_body_visible(on: bool) -> void:
+	for c in get_children():
+		if not c is Light3D:
+			(c as Node3D).visible = on if c is Node3D else true
 
 
 ## Night: a soft warm light above and behind the car, like passing under

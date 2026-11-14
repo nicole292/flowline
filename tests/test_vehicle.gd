@@ -60,7 +60,7 @@ func test_lane_change_takes_reasonable_time() -> void:
 	while m.x < 3.6 and time < 5.0:
 		m.step(1.0 / 60.0, 1.0, 0.0, 1.0)
 		time += 1.0 / 60.0
-	t.check(time > 0.35 and time < 0.9, "lane change time %f" % time)
+	t.check(time > 0.3 and time < 0.75, "lane change time %f" % time)
 
 
 func test_barrier_constrain() -> void:

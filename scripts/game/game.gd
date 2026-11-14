@@ -107,7 +107,7 @@ var _scale_done := false      ## lowering resolution did not help on this device
 var _perf_done := false       ## stopped adapting
 var _perf_last := ""          ## the step taken after the last window: "scale" | "shadows" | ""
 var _perf_prev_fps := 0.0     ## frame rate before that step
-const AUTO_SCALE_MIN := 0.6
+const AUTO_SCALE_MIN := 0.75  ## below this the picture looks soft even with FSR
 const MAX_STEP_DT := 0.05     ## longer frames (hitches) are simulated as 50 ms
 var _run_dt := 0.0            ## unclamped frame time (the bench measures real frames)
 ## Bends: in a curve the car is pushed gently to the outside, so you steer a
@@ -288,6 +288,12 @@ func _apply_quality() -> void:
 	var high: bool = save.settings.get("quality", "high") == "high"
 	world.set_quality(high and not _shadows_cut)
 	get_viewport().scaling_3d_scale = (1.0 if high else 0.75) * _auto_scale
+	# Below native resolution, FSR upscales with edge-aware sharpening instead
+	# of a plain bilinear stretch (Vulkan/Metal only; the web build keeps bilinear).
+	var vp := get_viewport()
+	var fsr_ok := RenderingServer.get_current_rendering_method() != "gl_compatibility"
+	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if fsr_ok and vp.scaling_3d_scale < 0.999 			else Viewport.SCALING_3D_MODE_BILINEAR
+	vp.fsr_sharpness = 0.35
 	if _args.has("supersample"):  # store screenshots: render 3D at this multiple, sharper when upscaled
 		get_viewport().scaling_3d_scale = float(_args["supersample"])
 	cockpit.low_cost = not high or _shadows_cut or _auto_scale < 0.999
@@ -295,7 +301,7 @@ func _apply_quality() -> void:
 
 ## Watches the frame rate while driving. If over 3 s more than a quarter of
 ## frames miss the target (60 fps, or the screen's rate if lower), the 3D
-## image is rendered 10% smaller, down to 60%; after that the sun shadows go.
+## image is rendered 10% smaller, down to 75% (FSR-upscaled); after that the sun shadows go.
 ## Every step must buy at least 5% more frames, or it is undone: a phone
 ## held back by its CPU (or an emulator) would only get blurrier.
 ## Fast phones (and the iPhone) never trigger it.
@@ -678,7 +684,7 @@ func _clear_traffic() -> void:
 		_release_view(w["type"], w["view"])
 	_wrecks.clear()
 	_invuln = 0.0
-	player_view.visible = true
+	player_view.set_body_visible(true)
 	for o in _oncoming:
 		_release_view(o["type"], o["view"])
 	_oncoming.clear()
@@ -856,7 +862,7 @@ func _apply_camera() -> void:
 		cam = "near"
 	_cockpit_on = cam == "cockpit" and state != State.MENU
 	cockpit.visible = _cockpit_on
-	player_view.visible = not _cockpit_on
+	player_view.set_body_visible(not _cockpit_on)
 	camera.hood = cam == "cockpit"
 	camera.lean = 0.0
 	# Bikes are short and low, so the chase view sits a little closer.
@@ -1001,7 +1007,7 @@ func _drive(dt: float) -> void:
 	if _invuln <= 0.0:
 		hit = sim.collide(model.x, player_z, player_view.length, player_view.width)
 	_update_player_view(dt, inp[1])
-	player_view.visible = not _cockpit_on
+	player_view.set_body_visible(not _cockpit_on)
 	_sync_traffic(dt)
 	_update_oncoming(dt)
 	_update_wrecks(dt)
@@ -1147,7 +1153,7 @@ func _begin_crash(a: TrafficSim.Agent) -> void:
 	state = State.CRASHING
 	_cockpit_on = false  # the crash camera circles the car, so show it
 	cockpit.visible = false
-	player_view.visible = true
+	player_view.set_body_visible(true)
 	var v: CarVisual = _views.get(a.id)
 	_views.erase(a.id)
 	_prev_x.erase(a.id)
@@ -1288,7 +1294,7 @@ func _tumble(c: Dictionary, dt: float) -> void:
 func _finish_run(reason: String) -> void:
 	Engine.time_scale = 1.0
 	audio.duck_music(false)
-	player_view.visible = true
+	player_view.set_body_visible(true)
 	audio.stop_engine()
 	_fx.visible = false
 	state = State.RESULTS

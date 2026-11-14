@@ -25,6 +25,12 @@ var long_accel := 0.0
 var lat_accel := 0.0
 var steer_input := 0.0      ## smoothed steering actually applied
 
+## Game-wide steering quickness on top of each car's stats (the garage bars
+## compare cars, so they stay as they were). Playtest 2026-11-14: "turns faster".
+const TURN_SPEED := 1.3     ## sideways speed at full lock
+const TURN_SNAP := 1.35     ## how quickly the car reaches it
+const TURN_GRIP := 1.4      ## grip limit on that change
+
 
 func configure(stats: Dictionary) -> void:
 	for key in stats:
@@ -44,15 +50,15 @@ func step(dt: float, throttle: float, brake: float, steer: float) -> void:
 	speed = clampf(speed + a * dt, min_speed, top_speed)
 	long_accel = (speed - prev_speed) / dt
 
-	# Input reaches the wheels in ~0.05 s: just enough to take the edge off a
+	# Input reaches the wheels in ~0.03 s: just enough to take the edge off a
 	# digital tap, short enough that a turn feels immediate.
-	steer_input = move_toward(steer_input, clampf(steer, -1.0, 1.0), dt * 20.0)
+	steer_input = move_toward(steer_input, clampf(steer, -1.0, 1.0), dt * 30.0)
 	var speed_factor := clampf(speed / 24.0, 0.35, 1.0)
-	var target := steer_input * lat_max * speed_factor
-	var dv := (target - lat_vel) * (1.0 - exp(-steer_response * dt))
+	var target := steer_input * lat_max * TURN_SPEED * speed_factor
+	var dv := (target - lat_vel) * (1.0 - exp(-steer_response * TURN_SNAP * dt))
 	# Steering against the current drift bites harder, so flicking from one
 	# direction to the other happens at once instead of after a slide.
-	var grip := lat_grip * (1.6 if target * lat_vel < 0.0 else 1.0)
+	var grip := lat_grip * TURN_GRIP * (1.6 if target * lat_vel < 0.0 else 1.0)
 	dv = clampf(dv, -grip * dt, grip * dt)
 	lat_vel += dv
 	lat_accel = dv / dt
