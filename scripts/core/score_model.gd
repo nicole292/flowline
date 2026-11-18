@@ -7,6 +7,8 @@ extends RefCounted
 ##
 ## Damage: every crash dents the car (harder hits more). At 100% the car is
 ## wrecked and the run is over. Starting a Flow Drive repairs some of it.
+## Scraping a barrier wears the car down a little and earns no Flow, so
+## riding the barrier past traffic can't be used to repair the car.
 
 const NEAR_GAP := 1.25         ## metres of side clearance that still counts
 const TIER_GAPS := [0.35, 0.75] ## below these: INSANE, CLOSE; else NEAR
@@ -20,6 +22,10 @@ const FLOW_DRAIN := 0.085      ## per second during Flow Drive
 const OVERTAKE_POINTS := 20
 const DIST_POINTS := 0.5       ## points per metre before the speed bonus
 const FLOW_REPAIR := 0.25      ## damage repaired each time Flow Drive starts
+const SCRAPE_WEAR := 0.05      ## damage per second of barrier contact
+const SCRAPE_HIT := 0.04       ## extra damage for a hard hit on the barrier
+const SCRAPE_MAX := 0.9        ## scraping alone never wrecks the car
+const SCRAPE_LOCK := 1.5       ## seconds after a scrape with no near misses / Flow
 
 var score := 0.0
 var distance := 0.0
@@ -38,6 +44,7 @@ var _grace := 0.0
 var lane_bonus := 1.0
 var oncoming_distance := 0.0
 var damage := 0.0              ## 0..1, 1 = wrecked
+var scrape_lock := 0.0         ## > 0: touching (or just touched) the barrier
 
 
 func multiplier() -> float:
@@ -61,6 +68,7 @@ func tick(dt: float, speed_ms: float) -> void:
 	if streak_timer <= 0.0:
 		streak = 0
 	_grace = maxf(0.0, _grace - dt)
+	scrape_lock = maxf(0.0, scrape_lock - dt)
 	if flow_active:
 		flow -= FLOW_DRAIN * dt
 		if flow <= 0.0:
@@ -86,7 +94,7 @@ func on_pass(gap: float, speed_ms: float) -> Dictionary:
 	overtakes += 1
 	score += OVERTAKE_POINTS * multiplier()
 	var tier := tier_for_gap(gap)
-	if tier < 0:
+	if tier < 0 or scrape_lock > 0.0:
 		return {}
 	near_misses += 1
 	streak = streak + 1 if streak_timer > 0.0 else 1
@@ -134,6 +142,15 @@ func on_crash(impact_speed: float) -> int:
 	score -= penalty
 	on_bump()
 	return penalty
+
+
+## Barrier contact for dt seconds (hard: a real hit, not just a slide).
+## Wears the car, ends Flow and the streak, and blocks near misses briefly.
+func on_scrape(dt: float, hard: bool) -> void:
+	if damage < SCRAPE_MAX:
+		damage = minf(SCRAPE_MAX, damage + SCRAPE_WEAR * dt + (SCRAPE_HIT if hard else 0.0))
+	scrape_lock = SCRAPE_LOCK
+	on_bump()
 
 
 ## Scraping a barrier or another light contact ends Flow and the streak.

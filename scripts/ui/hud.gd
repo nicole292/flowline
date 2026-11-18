@@ -770,32 +770,49 @@ func _draw_flow() -> void:
 
 
 func popup(text: String, sub: String, color: Color, big := false) -> void:
+	# Readable over anything (bright sky, lit tunnels): big bold text with a
+	# solid dark outline, on a soft dark pill. Playtest: "can't see it well".
 	var vp := get_viewport_rect().size
+	var pill := PanelContainer.new()
+	pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.02, 0.03, 0.05, 0.5)
+	sb.set_corner_radius_all(22)
+	sb.content_margin_left = 30
+	sb.content_margin_right = 30
+	sb.content_margin_top = 6
+	sb.content_margin_bottom = 8
+	pill.add_theme_stylebox_override("panel", sb)
 	var box := VBoxContainer.new()
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var a := _label(54 if big else 40, color, 8)
+	box.add_theme_constant_override("separation", -4)
+	pill.add_child(box)
+	var a := _label(64 if big else 52, color, 14)
+	a.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
 	a.text = text
 	a.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(a)
 	if sub != "":
-		var b := _label(30, Color.WHITE, 6)
+		var b := _label(40, Color(1.0, 0.92, 0.45), 12)
+		b.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
 		b.text = sub
 		b.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		box.add_child(b)
-	box.size = Vector2(vp.x, 120)
-	box.position = Vector2(0, vp.y * 0.24)
-	box.pivot_offset = Vector2(vp.x * 0.5, 40)
-	box.scale = Vector2(0.6, 0.6)
 	# Only the newest popup stays readable.
 	for c in _popup_root.get_children():
 		c.queue_free()
-	_popup_root.add_child(box)
-	var tw := box.create_tween()
-	tw.tween_property(box, "scale", Vector2.ONE, 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tw.tween_interval(0.55)
-	tw.parallel().tween_property(box, "position:y", box.position.y - 30, 0.9).set_delay(0.55)
-	tw.tween_property(box, "modulate:a", 0.0, 0.3)
-	tw.tween_callback(box.queue_free)
+	_popup_root.add_child(pill)
+	var sz := pill.get_combined_minimum_size()
+	pill.size = sz
+	pill.position = Vector2((vp.x - sz.x) * 0.5, vp.y * 0.22)
+	pill.pivot_offset = sz * 0.5
+	pill.scale = Vector2(0.6, 0.6)
+	var tw := pill.create_tween()
+	tw.tween_property(pill, "scale", Vector2.ONE, 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_interval(0.7)
+	tw.parallel().tween_property(pill, "position:y", pill.position.y - 24, 0.9).set_delay(0.7)
+	tw.tween_property(pill, "modulate:a", 0.0, 0.3)
+	tw.tween_callback(pill.queue_free)
 
 
 # ---------------------------------------------------------------- screens

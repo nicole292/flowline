@@ -124,3 +124,26 @@ func test_flow_drive_repairs_the_car() -> void:
 			break
 	t.near(repaired, ScoreModel.FLOW_REPAIR, 0.0001, "Flow Drive repairs damage")
 	t.near(s.damage, d - ScoreModel.FLOW_REPAIR, 0.0001, "damage went down")
+
+
+func test_scraping_earns_no_flow() -> void:
+	# Riding the barrier past traffic must not fill Flow (it would repair the car).
+	var s := ScoreModel.new()
+	for i in 20:
+		s.on_scrape(1.0 / 60.0, false)
+		var r := s.on_pass(0.2, 40.0)
+		t.check(r.is_empty(), "no near miss while scraping")
+	t.near(s.flow, 0.0, 0.0001, "flow stays empty")
+	s.tick(ScoreModel.SCRAPE_LOCK + 0.1, 30.0)
+	t.check(not s.on_pass(0.2, 40.0).is_empty(), "near misses count again after leaving the barrier")
+
+
+func test_scraping_wears_the_car_but_never_wrecks_it() -> void:
+	var s := ScoreModel.new()
+	s.on_scrape(1.0, false)
+	t.near(s.damage, ScoreModel.SCRAPE_WEAR, 0.0001, "a second of sliding wears the car")
+	s.on_scrape(0.0, true)
+	t.near(s.damage, ScoreModel.SCRAPE_WEAR + ScoreModel.SCRAPE_HIT, 0.0001, "a hard hit costs more")
+	for i in 600:
+		s.on_scrape(0.1, true)
+	t.near(s.damage, ScoreModel.SCRAPE_MAX, 0.0001, "scraping alone stops short of a wreck")

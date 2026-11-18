@@ -946,11 +946,18 @@ func _drive(dt: float) -> void:
 	var limit := HighwayWorld.BARRIER_X - 0.45 - player_view.width * 0.5
 	var impact := model.constrain(limit)
 	_scraping = absf(model.x) >= limit - 0.02 and absf(model.lat_vel) > 0.05 or impact > 0.0
-	if impact > 0.6:
-		_vibrate(25)
-		score.on_bump()
-		camera.kick(clampf(impact * 0.15, 0.1, 0.8), -signf(model.x))
-		hud.popup("SCRAPE", "Flow lost", Color(1, 0.4, 0.3))
+	# Any barrier contact (even a slide) wears the car and stops Flow; a
+	# hard hit costs a chunk of health and shakes the camera.
+	if absf(model.x) >= limit - 0.02:
+		var hard := impact > 0.6
+		var had_flow := score.flow > 0.0
+		score.on_scrape(dt, hard)
+		if hard:
+			_vibrate(25)
+			camera.kick(clampf(impact * 0.15, 0.1, 0.8), -signf(model.x))
+		if hard or had_flow:
+			hud.popup("SCRAPE", "Flow lost   ·   CAR %d%%" % int(round((1.0 - score.damage) * 100.0)),
+					Color(1, 0.4, 0.3))
 	player_z -= model.speed * dt
 	model.x -= world.curve.curvature(world.u_of(player_z)) * model.speed * model.speed * CURVE_PUSH * dt
 	# Lights on at night and in tunnels.
