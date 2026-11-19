@@ -29,6 +29,7 @@ extends Node3D
 ##   --crash-at=S,...  force a crash into the nearest car ahead at S seconds (dents, the last one wrecks)
 ##   --restart         with --autopilot: start a new run as soon as the results show (--bench also reports a tilted car)
 ##   --flow-at=S       start Flow Drive at S seconds (store screenshots)
+##   --fps             show the FPS counter
 ##   --skin=TONE       hand skin tone in the cockpit view (light medium tan brown dark)
 
 enum State { MENU, PLAYING, PAUSED, CRASHING, RESULTS }
@@ -110,6 +111,11 @@ var _perf_prev_fps := 0.0     ## frame rate before that step
 const AUTO_SCALE_MIN := 0.75  ## below this the picture looks soft even with FSR
 const MAX_STEP_DT := 0.05     ## longer frames (hitches) are simulated as 50 ms
 var _run_dt := 0.0            ## unclamped frame time (the bench measures real frames)
+var _dt_avg := 0.0            ## smoothed frame time for steady frames
+var _fps_label: Label
+var _fps_t := 0.0
+var _fps_frames := 0
+var _fps_worst := 0.0
 ## Bends: in a curve the car is pushed gently to the outside, so you steer a
 ## little to hold your lane (m/s sideways per m/s^2 of cornering).
 const CURVE_PUSH := 0.25
@@ -122,12 +128,11 @@ var _run_time := 0.0
 func _ready() -> void:
 	_parse_args()
 	_setup_input()
-	# Android phones span 60-144 Hz screens and much weaker GPUs than iPhones;
-	# a steady 60 (paced by Swappy) looks smoother than a rate that keeps
-	# dropping between 120 and 40, and the phone stays cooler, so no
-	# thermal slow-down after a few minutes.
-	if OS.get_name() == "Android":
-		Engine.max_fps = 60
+	# No software frame cap anywhere: V-Sync paces frames to the screen.
+	# (Android used to be capped at 60 by a timer; on 90/120 Hz phones that
+	# delivered frames unevenly, 8 ms then 25 ms, which read as stutter and
+	# fooled the quality watchdog into lowering the resolution mid-run.)
+	Engine.max_fps = 0
 	# Phones get a gas pedal; a mouse can't hold gas and steer at once.
 	var phone := OS.has_feature("mobile") or OS.has_feature("web_android") or OS.has_feature("web_ios")
 	save.settings["gas"] = "pedal" if phone else "auto"
@@ -141,6 +146,8 @@ func _ready() -> void:
 		save.settings["controls"] = _args["steer"]
 	if _args.has("theme"):  # harness: light | dark
 		save.settings["theme"] = _args["theme"]
+	if _args.has("fps"):  # harness: show the FPS counter
+		save.settings["fps"] = "on"
 	if _args.has("skin"):  # harness: light | medium | tan | brown | dark (cockpit hands)
 		save.settings["skin"] = _args["skin"]
 	if _args.has("cash"):
@@ -209,6 +216,18 @@ func _ready() -> void:
 	hud = Hud.new()
 	hud.process_mode = Node.PROCESS_MODE_ALWAYS
 	layer.add_child(hud)
+	# FPS counter (Settings > FPS counter): frames per second and the worst
+	# frame of the last second, so testers can report what their phone does.
+	_fps_label = Label.new()
+	_fps_label.add_theme_font_size_override("font_size", 22)
+	_fps_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	_fps_label.add_theme_constant_override("outline_size", 6)
+	_fps_label.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	_fps_label.offset_top = 64
+	_fps_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_fps_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_fps_label.visible = false
+	hud.add_child(_fps_label)
 	hud.pause_pressed.connect(func(): audio.click(); set_paused(true))
 	hud.camera_pressed.connect(func(): audio.click(); _cycle_camera())
 	hud.resume_pressed.connect(func(): audio.click(); set_paused(false))
@@ -271,6 +290,7 @@ func _apply_settings() -> void:
 	hud.mph = save.settings.get("units", "kmh") == "mph"
 	hud.set_controls(save.steer_for(save.selected_car), save.settings.get("gas", "pedal") == "auto")
 	cockpit.set_skin(save.settings.get("skin", "medium"))
+	_fps_label.visible = save.settings.get("fps", "off") == "on"
 	# iPhones report the tilt mirrored compared with Android and browsers
 	# (playtest: turning right steered left), so iOS starts flipped. The
 	# Gyro setting flips it again for any phone that still gets it wrong.
@@ -308,16 +328,16 @@ func _apply_quality() -> void:
 func _watch_performance(real_dt: float) -> void:
 	if _run_time < 3.0 or _perf_done or _args.has("bench"):
 		return
+	# Judged on the AVERAGE frame rate over 3 s: uneven single frames (frame
+	# pacing on 90/120 Hz screens) must never trigger a quality drop.
 	var hz := DisplayServer.screen_get_refresh_rate()
-	var target := 1.0 / clampf(hz if hz > 0.0 else 60.0, 30.0, 60.0)
+	var want := clampf(hz if hz > 0.0 else 60.0, 30.0, 60.0)
 	_perf_t += real_dt
 	_perf_frames += 1
-	if real_dt > target * 1.35:
-		_perf_slow += 1
 	if _perf_t < 3.0:
 		return
 	var fps := _perf_frames / _perf_t
-	var slow := _perf_slow * 4 > _perf_frames
+	var slow := fps < want * 0.8
 	if slow and _perf_last != "" and fps < _perf_prev_fps * 1.05:
 		if _perf_last == "scale":  # resolution is not the bottleneck: back up, try shadows
 			_auto_scale = minf(1.0, _auto_scale + 0.1)
@@ -767,6 +787,26 @@ func _sync_traffic(dt: float) -> void:
 
 func _process(dt: float) -> void:
 	_run_dt = dt
+	if _fps_label.visible:
+		_fps_t += dt
+		_fps_frames += 1
+		_fps_worst = maxf(_fps_worst, dt)
+		if _fps_t >= 1.0:
+			_fps_label.text = "%d FPS   worst %d ms   %s   3D %d%%%s" % [_fps_frames, int(_fps_worst * 1000.0),
+					RenderingServer.get_current_rendering_method(), int(round(_auto_scale * 100.0)),
+					"" if not _shadows_cut else "   no shadows"]
+			_fps_t = 0.0
+			_fps_frames = 0
+			_fps_worst = 0.0
+	# Frame-time smoothing: V-Synced frames are shown at an even rhythm, but
+	# the measured dt wobbles by a few ms (OS scheduling). Moving the world by
+	# the wobbly value makes cars jitter, so steady frames use a running
+	# average; a real hitch (much longer than usual) still passes through.
+	if _dt_avg <= 0.0 or dt > _dt_avg * 2.5 or dt < _dt_avg * 0.4:
+		_dt_avg = dt if _dt_avg <= 0.0 or dt < _dt_avg * 0.4 else _dt_avg
+	else:
+		_dt_avg = lerpf(_dt_avg, dt, 0.15)
+		dt = _dt_avg
 	# A hitch (shader compile, OS hiccup) must not teleport the traffic or
 	# skip the car through another one: long frames are simulated as 50 ms.
 	dt = minf(dt, MAX_STEP_DT)

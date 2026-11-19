@@ -8,7 +8,13 @@ extends Node
 const GEARS := [0.0, 0.17, 0.31, 0.46, 0.62, 0.80, 1.01]
 
 var _engine_low: AudioStreamPlayer
-var _load_db := 0.0
+## Two recordings of the engine, as racing games do: ON load (foot down:
+## loud, raw exhaust) and OFF load (coasting or braking: the distant and
+## engine-bay mics, muffled, with exhaust crackles while the revs fall).
+var _engine_low_off: AudioStreamPlayer
+var _engine_high_off: AudioStreamPlayer
+var _load := 1.0            ## 1 = on the gas, 0 = off; glides between
+var _crackle_t := 0.0
 ## Motorcycle: the engine revs higher.
 var bike := false
 var _engine_high: AudioStreamPlayer
@@ -54,6 +60,8 @@ func _ready() -> void:
 			AudioServer.set_bus_send(i, "Master")
 	_engine_low = _player("engine_low", "Engine", true)
 	_engine_high = _player("engine_high", "Engine", true)
+	_engine_low_off = _player("engine_low_off", "Engine", true)
+	_engine_high_off = _player("engine_high_off", "Engine", true)
 	_scrape = _player("scrape", "Sfx", true)
 	_ui = _player("click", "Sfx")
 	for t in 3:
@@ -116,14 +124,14 @@ func apply_settings(settings: Dictionary) -> void:
 
 
 func start_engine() -> void:
-	for p in [_engine_low, _engine_high]:
+	for p in [_engine_low, _engine_high, _engine_low_off, _engine_high_off]:
 		_fading.erase(p)
 		if not p.playing:
 			p.play()
 
 
 func stop_engine() -> void:
-	for p in [_engine_low, _engine_high]:
+	for p in [_engine_low, _engine_high, _engine_low_off, _engine_high_off]:
 		_fade_out(p, 0.25)
 	_gate(_scrape, false)
 	_gate(_horn, false)
@@ -230,18 +238,43 @@ func update_engine(dt: float, speed: float, top_speed: float, throttle: float, s
 	# at equal power so the level never dips in between.
 	# Pitch rises in equal musical steps (exponential), as the ear hears it.
 	var fire_hz := 70.0 * pow(290.0 / 70.0, _rpm) if bike else 55.0 * pow(240.0 / 55.0, _rpm)
-	_engine_low.pitch_scale = clampf(fire_hz / 85.0, 0.5, 2.2)
-	_engine_high.pitch_scale = clampf(fire_hz / 206.0, 0.5, 1.4)
+	var lo_pitch := clampf(fire_hz / 85.0, 0.5, 2.2)
+	var hi_pitch := clampf(fire_hz / 206.0, 0.5, 1.4)
+	_engine_low.pitch_scale = lo_pitch
+	_engine_high.pitch_scale = hi_pitch
+	_engine_low_off.pitch_scale = lo_pitch
+	_engine_high_off.pitch_scale = hi_pitch
 	var hi_mix := smoothstep(115.0, 165.0, fire_hz)
-	# On and off the gas the engine gets louder or softer over a moment, not in one step.
-	_load_db = move_toward(_load_db, 0.0 if throttle > 0.5 else -7.0, dt * 20.0)
-	var load_db := _load_db - 6.0 * (_shift_t / SHIFT_TIME)   # the gap while the clutch is in
-	# Real recordings are peakier than the old synthesised tone (more punch,
-	# less steady energy), so they sit 4 dB higher for the same loudness.
-	_engine_low.volume_db = linear_to_db(maxf(cos(hi_mix * PI * 0.5), 0.01)) - 3.0 + load_db
-	_engine_high.volume_db = linear_to_db(maxf(sin(hi_mix * PI * 0.5), 0.01)) - 3.0 + load_db
+	# On/off load: foot down swaps to the loud exhaust recording within about
+	# 0.1 s; lifting off fades over ~0.25 s into the muffled coasting one.
+	_load = move_toward(_load, 1.0 if throttle > 0.5 else 0.0, dt * (9.0 if throttle > 0.5 else 4.0))
+	var shift_db := -6.0 * (_shift_t / SHIFT_TIME)   # the gap while the clutch is in
+	# Flat out near the redline it gets louder still: the "full speed" roar.
+	var roar_db := 2.5 * smoothstep(0.75, 1.0, _rpm) * _load
+	var on_db := linear_to_db(maxf(sin(_load * PI * 0.5), 0.001)) + shift_db + roar_db - 3.0
+	var off_db := linear_to_db(maxf(cos(_load * PI * 0.5), 0.001)) + shift_db - 5.0
+	var lo_g := linear_to_db(maxf(cos(hi_mix * PI * 0.5), 0.01))
+	var hi_g := linear_to_db(maxf(sin(hi_mix * PI * 0.5), 0.01))
+	_engine_low.volume_db = lo_g + on_db
+	_engine_high.volume_db = hi_g + on_db
+	_engine_low_off.volume_db = lo_g + off_db
+	_engine_high_off.volume_db = hi_g + off_db
+	# Coasting at high revs: the exhaust crackles and burbles now and then.
+	_crackle_t -= dt
+	if _load < 0.3 and _rpm > 0.45 and _crackle_t <= 0.0:
+		_crackle_t = randf_range(0.22, 0.65)
+		if randf() < 0.7:
+			_crackle()
 	_scrape_t = 0.25 if scraping else maxf(0.0, _scrape_t - dt)
 	_gate(_scrape, _scrape_t > 0.0)
+
+
+## A small, quiet pop for the off-throttle burble (separate from the big bang).
+func _crackle() -> void:
+	_pops.stream = _stream(POP_SOUNDS[1 + randi() % 3])
+	_pops.pitch_scale = randf_range(1.0, 1.3)
+	_pops.volume_db = randf_range(-20.0, -14.0)
+	_pops.play()
 
 
 func _pop() -> void:
@@ -277,6 +310,7 @@ func crash() -> void:
 	_gate(_horn, false)
 	_gate(_scrape, false)
 	_fade_out(_engine_high, 0.15)
+	_fade_out(_engine_high_off, 0.15)
 
 
 func click() -> void:

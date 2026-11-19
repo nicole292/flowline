@@ -146,9 +146,33 @@ def preview(low, high, seconds=10.0):
     return [v / peak * 0.85 for v in out]
 
 
+def lowpass(x, cutoff):
+    """Gentle one-pole low-pass, twice (12 dB/oct): the muffled, coasting tone."""
+    k = 1.0 - math.exp(-2.0 * math.pi * cutoff / RATE)
+    for _ in range(2):
+        y, out = 0.0, []
+        for v in x:
+            y += (v - y) * k
+            out.append(y)
+        x = out
+    peak = max(abs(v) for v in x)
+    return [v / peak * 0.9 for v in x]
+
+
+# Off-load (foot off the gas / braking): the distant and engine-bay mics,
+# rolled off above ~1.4 kHz, as racing games switch to a separate "off"
+# recording when the engine coasts.
+OFFLOAD = {"Distant": 1.0, "4062": 0.45}
+
+
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "pops":
         make_pops()
+        return
+    if len(sys.argv) > 1 and sys.argv[1] == "offload":
+        write(os.path.join(AUDIO, "engine_low_off.wav"), lowpass(layer("19_2500", OFFLOAD), 1400.0))
+        write(os.path.join(AUDIO, "engine_high_off.wav"), lowpass(layer("20_6500", OFFLOAD), 1800.0))
+        print("installed off-load engine layers")
         return
     if len(sys.argv) > 1:
         name = sys.argv[1]
