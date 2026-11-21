@@ -133,3 +133,21 @@ func test_daily_reward_once_per_day() -> void:
 	t.check(s.claim_daily("2026-11-01") == 0, "only once a day")
 	t.check(s.claim_daily("2026-11-02") == 1000, "streak grows")
 	t.check(s.claim_daily("2026-11-05") == 500, "missed day resets streak")
+
+
+func test_bought_paint_and_rim_stay_bought_after_restart() -> void:
+	# JSON loads numbers as floats; bought colours must still count as owned.
+	var s := _fresh()
+	s.cash = 100000
+	t.check(s.choose_paint("vanta", 3), "buy paint 3")
+	t.check(s.choose_rim("vanta", 2), "buy rim 2")
+	t.check(s.choose_paint("vanta", -1), "back to factory paint")
+	t.check(s.save_to_disk(), "saved")
+	var l := SaveData.new()
+	l.path = PATH
+	t.check(l.load_from_disk(), "loaded")
+	var cash := l.cash
+	t.check(l.choose_paint("vanta", 3), "pick paint 3 again")
+	t.check(l.choose_rim("vanta", 2), "pick rim 2 again")
+	t.check(l.cash == cash, "no charge for colours already bought (cash %d -> %d)" % [cash, l.cash])
+	t.check(l.paint_index("vanta") == 3, "paint 3 selected")

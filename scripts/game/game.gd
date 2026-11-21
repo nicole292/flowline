@@ -30,6 +30,8 @@ extends Node3D
 ##   --restart         with --autopilot: start a new run as soon as the results show (--bench also reports a tilted car)
 ##   --flow-at=S       start Flow Drive at S seconds (store screenshots)
 ##   --fps             show the FPS counter
+##   --popup=SIZE      NEAR MISS text size: s m l xl
+##   --pause-at=S      open the pause menu at S seconds (screenshots)
 ##   --skin=TONE       hand skin tone in the cockpit view (light medium tan brown dark)
 
 enum State { MENU, PLAYING, PAUSED, CRASHING, RESULTS }
@@ -154,6 +156,8 @@ func _ready() -> void:
 		save.settings["controls"] = _args["steer"]
 	if _args.has("theme"):  # harness: light | dark
 		save.settings["theme"] = _args["theme"]
+	if _args.has("popup"):  # harness: s | m | l | xl popup text size
+		save.settings["popup"] = _args["popup"]
 	if _args.has("fps"):  # harness: show the FPS counter
 		save.settings["fps"] = "on"
 	if _args.has("skin"):  # harness: light | medium | tan | brown | dark (cockpit hands)
@@ -239,6 +243,7 @@ func _ready() -> void:
 	hud.pause_pressed.connect(func(): audio.click(); set_paused(true))
 	hud.camera_pressed.connect(func(): audio.click(); _cycle_camera())
 	hud.resume_pressed.connect(func(): audio.click(); set_paused(false))
+	hud.popup_size_step.connect(_step_popup_size)
 	hud.restart_pressed.connect(func(): audio.click(); restart())
 	hud.menu_pressed.connect(func(): audio.click(); _quit_to_menu())
 	hud.end_pressed.connect(func():
@@ -293,12 +298,31 @@ func _setup_input() -> void:
 			InputMap.action_add_event(action, ev)
 
 
+## NEAR MISS / CLOSE CALL text sizes (setting "popup").
+const POPUP_ORDER := ["s", "m", "l", "xl"]
+const POPUP_SIZES := {"s": 0.75, "m": 1.0, "l": 1.25, "xl": 1.5}
+const POPUP_NAMES := {"s": "SMALL", "m": "MEDIUM", "l": "LARGE", "xl": "X-LARGE"}
+
+
+## Pause menu A- / A+: one size step, saved, with a sample so you see it.
+func _step_popup_size(dir: int) -> void:
+	audio.click()
+	var i := clampi(POPUP_ORDER.find(save.settings.get("popup", "m")) + dir, 0, POPUP_ORDER.size() - 1)
+	save.settings["popup"] = POPUP_ORDER[i]
+	save.save_to_disk()
+	_apply_settings()
+	hud.popup("CLOSE CALL", "+180", Hud.ACCENT)
+
+
 func _apply_settings() -> void:
 	audio.apply_settings(save.settings)
 	hud.mph = save.settings.get("units", "kmh") == "mph"
 	hud.set_controls(save.steer_for(save.selected_car), save.settings.get("gas", "pedal") == "auto")
 	cockpit.set_skin(save.settings.get("skin", "medium"))
 	_fps_label.visible = save.settings.get("fps", "off") == "on"
+	var ps: String = save.settings.get("popup", "m")
+	hud.popup_scale = POPUP_SIZES.get(ps, 1.0)
+	hud.set_popup_size_text(POPUP_NAMES.get(ps, "MEDIUM"))
 	# iPhones report the tilt mirrored compared with Android and browsers
 	# (playtest: turning right steered left), so iOS starts flipped. The
 	# Gyro setting flips it again for any phone that still gets it wrong.
@@ -1468,6 +1492,12 @@ func _dev_harness(dt: float) -> void:
 				_begin_crash(near)
 			else:
 				_bump(near)
+	if state == State.PLAYING and _args.has("pause-at") and _run_time >= float(_args["pause-at"]):
+		_args.erase("pause-at")
+		set_paused(true)
+		if _args.has("shot-prefix"):  # the run clock stops while paused: shoot on a real timer
+			get_tree().create_timer(0.6, true).timeout.connect(
+					func(): _screenshot("%s_pause.png" % _args["shot-prefix"]))
 	if state == State.PLAYING and _args.has("flow-at") and _run_time >= float(_args["flow-at"]):
 		_args.erase("flow-at")
 		score.flow = 1.0

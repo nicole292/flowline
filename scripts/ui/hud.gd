@@ -12,6 +12,8 @@ signal pause_pressed
 signal camera_pressed
 signal resume_pressed
 signal restart_pressed
+## Pause menu text-size buttons: -1 smaller, +1 larger.
+signal popup_size_step(dir: int)
 
 const ACCENT := Color(1.0, 0.74, 0.18)
 const FLOW_COL := Color(1.0, 0.42, 0.14)
@@ -56,6 +58,9 @@ var _horn_touch := -1
 var _arrow_touches := {}    # index -> -1 (left) | 1 (right)
 var _pedal_touches := {}    # index -> "gas" | "brake"
 var _pause_panel: Control
+## Size of the NEAR MISS / CLOSE CALL text (Settings or pause menu).
+var popup_scale := 1.0
+var _popup_size_label: Label
 var _results_panel: Control
 var _results_body: VBoxContainer
 var _pause_btn: Button
@@ -171,6 +176,23 @@ func _build() -> void:
 		["END RUN", false, func(): end_pressed.emit()],
 		["RESTART", false, func(): restart_pressed.emit()],
 		["MENU", false, func(): menu_pressed.emit()]])
+	# Text size for the popups, right in the pause menu.
+	var size_row := HBoxContainer.new()
+	size_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	size_row.add_theme_constant_override("separation", 14)
+	var minus := _button("A-")
+	var plus := _button("A+")
+	for b in [minus, plus]:
+		b.custom_minimum_size = Vector2(84, 64)
+	minus.pressed.connect(func(): popup_size_step.emit(-1))
+	plus.pressed.connect(func(): popup_size_step.emit(1))
+	_popup_size_label = _label(24)
+	_popup_size_label.custom_minimum_size = Vector2(190, 0)
+	_popup_size_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	size_row.add_child(minus)
+	size_row.add_child(_popup_size_label)
+	size_row.add_child(plus)
+	_pause_panel.find_child("Body", true, false).add_child(size_row)
 	# Results overlay
 	_results_panel = _make_center_panel("", [["DRIVE AGAIN", true, func(): restart_pressed.emit()],
 		["MENU", false, func(): menu_pressed.emit()]], true)
@@ -769,6 +791,10 @@ func _draw_flow() -> void:
 			HORIZONTAL_ALIGNMENT_LEFT, -1, 18, FLOW_COL if _flow_active else Color(1, 1, 1, 0.85))
 
 
+func set_popup_size_text(t: String) -> void:
+	_popup_size_label.text = "TEXT  " + t
+
+
 func popup(text: String, sub: String, color: Color, big := false) -> void:
 	# Readable over anything (bright sky, lit tunnels): big bold text with a
 	# solid dark outline, on a soft dark pill. Playtest: "can't see it well".
@@ -787,13 +813,17 @@ func popup(text: String, sub: String, color: Color, big := false) -> void:
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	box.add_theme_constant_override("separation", -4)
 	pill.add_child(box)
-	var a := _label(64 if big else 52, color, 14)
+	var k := popup_scale
+	sb.content_margin_left = 30 * k
+	sb.content_margin_right = 30 * k
+	sb.set_corner_radius_all(int(22 * k))
+	var a := _label(int((64 if big else 52) * k), color, int(14 * k))
 	a.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
 	a.text = text
 	a.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(a)
 	if sub != "":
-		var b := _label(40, Color(1.0, 0.92, 0.45), 12)
+		var b := _label(int(40 * k), Color(1.0, 0.92, 0.45), int(12 * k))
 		b.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
 		b.text = sub
 		b.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

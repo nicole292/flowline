@@ -35,7 +35,7 @@ var last_env := "day"
 var settings := {"music": 0.8, "sfx": 1.0, "engine": 1.0, "steer_sensitivity": 1.0,
 		"controls": "buttons", "gas": "pedal", "camera": "near", "quality": "high", "units": "kmh",
 		"theme": "",   # "" = follow the device until the player picks
-		"skin": "medium", "gyro": "normal", "fps": "off"}  # skin tone of the driver's hands in the cockpit view
+		"skin": "medium", "gyro": "normal", "fps": "off", "popup": "m"}  # skin tone of the driver's hands in the cockpit view
 
 
 func to_dict() -> Dictionary:
@@ -78,6 +78,21 @@ func from_dict(d: Dictionary) -> void:
 		var v: Variant = d.get(key, {})
 		if v is Dictionary:
 			set(key, (v as Dictionary).duplicate(true))
+	# JSON brings every number back as a float (3 -> 3.0) and Array.has(3)
+	# does not match 3.0, so bought paints and rims looked unbought after a
+	# restart and were charged again. Store them as ints.
+	for key in ["owned_paints", "owned_rims"]:
+		var d2: Dictionary = get(key)
+		for car in d2.keys():
+			var ints: Array = []
+			for v in (d2[car] if d2[car] is Array else []):
+				if not ints.has(int(v)):
+					ints.append(int(v))
+			d2[car] = ints
+	for key in ["paints", "rims"]:
+		var d3: Dictionary = get(key)
+		for car in d3.keys():
+			d3[car] = int(d3[car])
 	for car in upgrades.keys():
 		for cat in Progression.UPGRADES:
 			upgrades[car][cat] = clampi(int(upgrades[car].get(cat, 0)), 0, Progression.MAX_LEVEL)
