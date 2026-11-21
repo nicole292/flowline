@@ -708,6 +708,25 @@ func _warm_up() -> void:
 	temp.append(tunnel)
 	player_view.set_brake(true)
 	player_view.set_headlights(true)
+	# The player's headlights shine forward from the car, nowhere near these
+	# hidden objects, so on OpenGL (Android) the "lit by a spot / omni light"
+	# version of every shader was still built on first use: 130-140 ms stalls
+	# when the first tunnel switched the headlights on. Temporary lights of
+	# both kinds right here light every warm-up object, the road and verges
+	# above them, so all those versions are built now, before driving.
+	for kind in ["spot", "omni"]:
+		var l: Light3D = SpotLight3D.new() if kind == "spot" else OmniLight3D.new()
+		if l is SpotLight3D:
+			(l as SpotLight3D).spot_range = 70.0
+			(l as SpotLight3D).spot_angle = 85.0
+		else:
+			(l as OmniLight3D).omni_range = 70.0
+		l.light_energy = 0.01
+		l.shadow_enabled = false
+		add_child(l)
+		l.global_position = hide_at + Vector3(0, 4.0, 6.0)
+		l.rotation.x = deg_to_rad(60.0)   # tipped up towards the road and the objects
+		temp.append(l)
 	for i in 3:
 		await get_tree().process_frame
 	player_view.set_brake(false)

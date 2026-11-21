@@ -783,7 +783,15 @@ func _tunnel_materials() -> Dictionary:
 		_tunnel_mats = {
 			"wall": _bend_mat({"albedo": Color(0.42, 0.42, 0.4), "use_tex": true,
 					"albedo_tex": _tex("concrete_albedo"), "tex_scale": 0.35, "roughness_v": 0.7,
-					"emission_color": Color(1.0, 0.85, 0.65), "emission_energy": 0.06}),
+					"emission_color": Color(1.0, 0.85, 0.65), "emission_energy": 0.06,
+					"tile_top": 3.6, "tile_color": Color(0.86, 0.87, 0.85)}),
+			"led": _bend_mat({"albedo": Color(1.0, 0.97, 0.9), "emission_color": Color(1.0, 0.95, 0.86),
+					"emission_energy": 6.0, "dash_period": 3.0, "dash_fill": 0.8}),
+			"fan": _bend_mat({"albedo": Color(0.3, 0.31, 0.33), "metallic_v": 0.7, "roughness_v": 0.4}),
+			"sign": _bend_mat({"albedo": Color(0.05, 0.6, 0.25), "emission_color": Color(0.1, 1.0, 0.4),
+					"emission_energy": 3.0}),
+			"reflector": _bend_mat({"albedo": Color(1.0, 0.6, 0.1), "emission_color": Color(1.0, 0.55, 0.1),
+					"emission_energy": 4.0, "dash_period": 5.0, "dash_fill": 0.04}),
 			"band": _bend_mat({"albedo": Color(0.85, 0.6, 0.1), "roughness_v": 0.5,
 					"emission_color": Color(0.85, 0.6, 0.1), "emission_energy": 0.15}),
 			"ceiling": _bend_mat({"albedo": Color(0.08, 0.08, 0.085), "roughness_v": 0.9}),
@@ -821,6 +829,13 @@ static func _long_box(st: SurfaceTool, x0: float, x1: float, y0: float, y1: floa
 		for f in faces:
 			for q in [0, 2, 1, 0, 3, 2]:
 				st.add_vertex(c[f[q]])
+
+
+## A flat panel from (xa, ya) to (xb, yb) running SEG along the road, seen from both sides.
+static func _slope(st: SurfaceTool, xa: float, ya: float, xb: float, yb: float) -> void:
+	var c := [Vector3(xa, ya, 0.0), Vector3(xb, yb, 0.0), Vector3(xb, yb, -SEG), Vector3(xa, ya, -SEG)]
+	for q in [0, 1, 2, 0, 2, 3, 0, 2, 1, 0, 3, 2]:
+		st.add_vertex(c[q])
 
 
 static func _commit(build: Callable) -> ArrayMesh:
@@ -861,7 +876,43 @@ func _make_tunnel_parts() -> void:
 		_long_box(st, out_l - 0.8, out_r + 0.8, h, h + 0.7, SEG, false)), mats["ceiling"], true, "slice"]
 	_tunnel_parts["lamp"] = [_commit(func(st: SurfaceTool) -> void:  # lamp rows near the top of every wall
 		for x in [out_r - 0.12, mid1 + 0.04, mid0 - 0.12, out_l + 0.04]:
-			_long_box(st, x, x + 0.08, h - 0.7, h - 0.5, SEG, false)), mats["lamp"], false, "slice"]
+			_long_box(st, x, x + 0.08, h - 1.55, h - 1.38, SEG, false)), mats["lamp"], false, "slice"]
+	# Vaulted look: angled panels across the top corners of both tubes.
+	_tunnel_parts["haunch"] = [_commit(func(st: SurfaceTool) -> void:
+		for wall in [[out_r, -1.0], [mid1, 1.0], [mid0, -1.0], [out_l, 1.0]]:
+			_slope(st, wall[0], h - 1.2, wall[0] + wall[1] * 1.5, h)), mats["wall"], false, "slice"]
+	# A bright LED strip down the middle of each tube's ceiling.
+	_tunnel_parts["led"] = [_commit(func(st: SurfaceTool) -> void:
+		for c in [(mid1 + out_r) * 0.5, (out_l + mid0) * 0.5]:
+			_long_box(st, c - 0.2, c + 0.2, h - 0.1, h, SEG, false)), mats["led"], false, "slice"]
+	# Amber reflectors along the kerbs.
+	_tunnel_parts["reflector"] = [_commit(func(st: SurfaceTool) -> void:
+		for x in [out_r - 0.07, mid1 + 0.02, mid0 - 0.07, out_l + 0.02]:
+			_long_box(st, x, x + 0.05, 0.62, 0.72, SEG, false)), mats["reflector"], false, "slice"]
+	# Every 60 m: a pair of jet fans under the ceiling, green emergency-exit signs.
+	_tunnel_parts["fan"] = [_commit(func(st: SurfaceTool) -> void:
+		var cyl := CylinderMesh.new()
+		cyl.top_radius = 0.45
+		cyl.bottom_radius = 0.45
+		cyl.height = 3.2
+		cyl.radial_segments = 14
+		cyl.rings = 1
+		var ring := CylinderMesh.new()
+		ring.top_radius = 0.5
+		ring.bottom_radius = 0.5
+		ring.height = 0.25
+		ring.radial_segments = 14
+		ring.rings = 1
+		for c in [(mid1 + out_r) * 0.5, (out_l + mid0) * 0.5]:
+			for dx in [-1.25, 1.25]:
+				var b := Basis(Vector3.RIGHT, PI * 0.5)
+				st.append_from(cyl, 0, Transform3D(b, Vector3(c + dx, h - 0.85, -5.0)))
+				for dz in [-1.5, 1.5]:
+					st.append_from(ring, 0, Transform3D(b, Vector3(c + dx, h - 0.85, -5.0 + dz)))
+				_long_box(st, c + dx - 0.05, c + dx + 0.05, h - 0.45, h, 0.6)), mats["fan"], false, "every6"]
+	_tunnel_parts["sign"] = [_commit(func(st: SurfaceTool) -> void:
+		for x in [out_r - 0.06, mid1, mid0 - 0.06, out_l]:
+			_long_box(st, x, x + 0.06, 2.4, 2.8, 0.9)), mats["sign"], false, "every6"]
 	var cx := (out_l + out_r) * 0.5
 	var xs: Array[float] = []
 	var xx := -160.0
@@ -911,13 +962,17 @@ func _build_tunnel(length: float) -> Node3D:
 		var part: Array = _tunnel_parts[key]
 		var gi: GeometryInstance3D
 		match part[3]:
-			"slice":
+			"slice", "every6":
+				var step := 6 if part[3] == "every6" else 1
+				var count := maxi(1, segs / step) if step > 1 else segs
 				var mm := MultiMesh.new()
 				mm.transform_format = MultiMesh.TRANSFORM_3D
 				mm.mesh = part[0]
-				mm.instance_count = segs
-				for i in segs:
-					mm.set_instance_transform(i, Transform3D(Basis.IDENTITY, Vector3(0, 0, -i * SEG)))
+				mm.instance_count = count
+				for i in count:
+					# every6 pieces sit mid-way in their 60 m stretch, never at a portal
+					var z := -i * SEG * step - (SEG * 2.0 if step > 1 else 0.0)
+					mm.set_instance_transform(i, Transform3D(Basis.IDENTITY, Vector3(0, 0, z)))
 				var mmi := MultiMeshInstance3D.new()
 				mmi.multimesh = mm
 				gi = mmi
