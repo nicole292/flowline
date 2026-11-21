@@ -133,6 +133,14 @@ func _ready() -> void:
 	# delivered frames unevenly, 8 ms then 25 ms, which read as stutter and
 	# fooled the quality watchdog into lowering the resolution mid-run.)
 	Engine.max_fps = 0
+	# Google Play Age Signals (age assurance laws, e.g. California and Brazil
+	# from January 2027): asks Play once per launch; only where sharing is
+	# mandatory does it request the age signal. Nothing is stored or used -
+	# the game is the same for every age. See addons/flowline_age_signals.
+	if OS.get_name() == "Android" and Engine.has_singleton("FlowlineAgeSignals"):
+		var age := Engine.get_singleton("FlowlineAgeSignals")
+		age.age_signals_done.connect(func(status: String) -> void: print("age signals: ", status))
+		age.check()
 	# Phones get a gas pedal; a mouse can't hold gas and steer at once.
 	var phone := OS.has_feature("mobile") or OS.has_feature("web_android") or OS.has_feature("web_ios")
 	save.settings["gas"] = "pedal" if phone else "auto"

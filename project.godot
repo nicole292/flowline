@@ -22,6 +22,10 @@ window/stretch/aspect="expand"
 window/handheld/orientation=4
 window/vsync/vsync_mode=1
 
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/flowline_age_signals/plugin.cfg")
+
 [gui]
 
 theme/custom_font="res://assets/fonts/BarlowSemiCondensed-SemiBold.ttf"

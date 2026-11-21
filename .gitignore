@@ -10,3 +10,5 @@ __pycache__/
 /android/build/assetPacks/
 /android/build/assetPackInstallTime/build/
 /android/build/libs/
+/tools/android/age_signals_plugin/build/
+/tools/android/age_signals_plugin/.gradle/

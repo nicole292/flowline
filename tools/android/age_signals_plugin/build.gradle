@@ -1,0 +1,24 @@
+plugins {
+    id 'com.android.library'
+}
+
+android {
+    namespace 'com.elishakov.flowline.agesignals'
+    compileSdk 36
+    defaultConfig {
+        minSdk 24
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    // Godot's Android library: provided by the game at run time.
+    compileOnly files('../../../android/build/libs/release/godot-lib.template_release.aar')
+    // Google Play Age Signals (also declared by the Godot export plugin so the
+    // game's Gradle build pulls it in).
+    compileOnly 'com.google.android.play:age-signals:0.0.6'
+    compileOnly 'androidx.annotation:annotation:1.9.1'
+}

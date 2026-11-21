@@ -1,0 +1,19 @@
+// Builds the FLOWLINE age-signals Godot plugin (an Android library, .aar).
+// Run: tools/android/build_age_signals.sh
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+    plugins {
+        id 'com.android.library' version '8.6.1'
+    }
+}
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+rootProject.name = 'flowline-age-signals'
