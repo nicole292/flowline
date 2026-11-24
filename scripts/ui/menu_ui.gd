@@ -867,6 +867,7 @@ func _build_settings() -> Control:
 	_setting_row(look, "Dark mode").add_child(sw)
 	_choice_row(look, "Graphics", "quality", [["HIGH", "high"], ["SAVER", "low"]])
 	_choice_row(look, "Speed", "units", [["KM/H", "kmh"], ["MPH", "mph"]])
+	_choice_row(look, "Engine", "engine_sound", [["CLASSIC", "classic"], ["SPORT", "sport"], ["MUSCLE", "muscle"]])
 	_choice_row(look, "Popup text", "popup", [["S", "s"], ["M", "m"], ["L", "l"], ["XL", "xl"]])
 	_choice_row(look, "FPS counter", "fps", [["OFF", "off"], ["ON", "on"]])
 	var ctl := _section(cols, "CONTROLS")

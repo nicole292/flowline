@@ -26,6 +26,12 @@ var _skin := StandardMaterial3D.new()
 ## viewport shown on the modelled mirror glass (only while this view is on).
 const LAYER := 2           ## the cockpit's own render layer; the mirror camera skips it
 var _mirror_vp: SubViewport
+## Driver's wing mirror (left): its own small camera at the glass, looking
+## back and a little outward like real glass. It and the rear-view mirror
+## take turns (each refreshes 30 times a second): same cost as before.
+var _side_vp: SubViewport
+var _side_cam: Camera3D
+var _side_glass := Transform3D()   # in cockpit space: where the glass is, facing the driver
 var _mirror_cam: Camera3D
 var _mirror_mat: StandardMaterial3D
 var _mirrors: Array[MeshInstance3D] = []
@@ -93,8 +99,10 @@ func build(is_bike: bool, paint: Material) -> void:
 
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_VISIBILITY_CHANGED and _mirror_vp:
-		_mirror_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS if is_visible_in_tree() 				else SubViewport.UPDATE_DISABLED
+	if what == NOTIFICATION_VISIBILITY_CHANGED and _mirror_vp and not is_visible_in_tree():
+		_mirror_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+		if _side_vp:
+			_side_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
 
 
 ## Finds the modelled mirror glass (material "Mirror") and lays the live
@@ -154,15 +162,30 @@ func _build_mirrors() -> void:
 	# Wing mirrors show the outer thirds of the same live rear view (no extra
 	# rendering): the left mirror the traffic behind on the left, the right
 	# mirror behind on the right, each flipped like real glass.
+	if _side_vp == null:
+		_side_vp = SubViewport.new()
+		_side_vp.size = Vector2i(240, 144)
+		_side_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+		add_child(_side_vp)
+		_side_cam = Camera3D.new()
+		_side_cam.cull_mask = 1
+		_side_cam.fov = 26.0
+		_side_cam.near = 0.5
+		_side_cam.far = 200.0
+		_side_vp.add_child(_side_cam)
 	for box in wings:
 		var q := MeshInstance3D.new()
-		var qm := QuadMesh.new()
-		qm.size = Vector2(0.2, box.size.y * 0.93)
-		q.mesh = qm
+		q.mesh = _oval_mesh(0.245, box.size.y * 0.97)
 		var mat: StandardMaterial3D = _mirror_mat.duplicate()
 		var left := box.get_center().x < 0.37
-		mat.uv1_scale = Vector3(-1.0 / 3.0, 1, 1)
-		mat.uv1_offset = Vector3(1.0 if left else 1.0 / 3.0, 0, 0)
+		mat.cull_mode = BaseMaterial3D.CULL_DISABLED   # the oval is seen from its winding's back
+		if left:   # the driver's mirror: its own camera, flipped like glass
+			mat.albedo_texture = _side_vp.get_texture()
+			mat.uv1_scale = Vector3(-1, 1, 1)
+			mat.uv1_offset = Vector3(1, 0, 0)
+		else:      # passenger side (rarely in view): a slice of the rear view
+			mat.uv1_scale = Vector3(-1.0 / 3.0, 1, 1)
+			mat.uv1_offset = Vector3(1.0 / 3.0, 0, 0)
 		q.material_override = mat
 		q.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		q.layers = LAYER
@@ -171,7 +194,15 @@ func _build_mirrors() -> void:
 		var c := box.get_center()
 		var to_eye := Vector3(-c.x, 0.0, -c.z).normalized()
 		var nrm := (to_eye + Vector3.BACK).normalized()
-		q.transform = Transform3D(Basis.looking_at(-nrm, Vector3.UP), c + nrm * 0.004)
+		q.transform = Transform3D(Basis.looking_at(-nrm, Vector3.UP), c + nrm * 0.009)
+		if left:
+			# What a real mirror shows: the view reflected about the glass.
+			# Seen from the eye (origin), that is a look back and outward.
+			# Set like a real driver's mirror: looking back along the car,
+			# a little outward (the lane beside and behind) and a little down
+			# (road, not sky). Looking straight out of a mirror shows trees.
+			var aim := Vector3(-0.2, -0.05, 1.0).normalized()
+			_side_glass = Transform3D(Basis.looking_at(aim, Vector3.UP), c)
 		add_child(q)
 		_mirrors.append(q)
 	for box in boxes:
@@ -296,10 +327,35 @@ func _paint(n: Node, paint: Material) -> void:
 			var src := mi.mesh.surface_get_material(i)
 			if src and src.resource_name == "Paint":
 				mi.set_surface_override_material(i, paint)
+			elif src and src.resource_name == "SideMirror":
+				mi.set_surface_override_material(i, _glass_back())
 			elif src and src.resource_name == "Skin":
 				mi.set_surface_override_material(i, _skin)
 	for c in n.get_children():
 		_paint(c, paint)
+
+
+static var _glass_back_mat: StandardMaterial3D
+static func _glass_back() -> StandardMaterial3D:
+	if _glass_back_mat == null:
+		_glass_back_mat = StandardMaterial3D.new()
+		_glass_back_mat.albedo_color = Color(0.03, 0.035, 0.04)
+		_glass_back_mat.roughness = 0.3
+	return _glass_back_mat
+
+
+## An oval with UVs 0..1 across its box (the live mirror picture's shape).
+static func _oval_mesh(w: float, h: float) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var n := 40
+	for k in n:
+		for p in [Vector2.ZERO, Vector2.from_angle(TAU * k / n), Vector2.from_angle(TAU * (k + 1) / n)]:
+			st.set_normal(Vector3.BACK)
+			st.set_uv(Vector2(0.5 + p.x * 0.5, 0.5 - p.y * 0.5))
+			st.add_vertex(Vector3(p.x * w * 0.5, p.y * h * 0.5, 0.0))
+	st.index()
+	return st.commit()
 
 
 func set_skin(tone: String) -> void:
@@ -326,12 +382,16 @@ func update(steer: float, speed_frac := 0.0, rpm := 0.0, gear := 1, speed_text :
 	if _mirror_cam:  # from just above the eye, looking straight back
 		var b := global_basis.orthonormalized()
 		_mirror_cam.global_transform = Transform3D(b * Basis(Vector3.UP, PI), global_position + b.y * 0.12)
+		if _side_cam:
+			_side_cam.global_transform = global_transform.orthonormalized() * _side_glass
 		if is_visible_in_tree():
+			# Rear-view and wing mirror take turns, one per frame (each 30 Hz
+			# at 60 fps): the cost of one mirror. Slow phones: half that again.
 			_mirror_tick += 1
-			var mode := SubViewport.UPDATE_ALWAYS
-			if low_cost:
-				mode = SubViewport.UPDATE_ONCE if _mirror_tick % 2 == 0 else SubViewport.UPDATE_DISABLED
-			_mirror_vp.render_target_update_mode = mode
+			var slot := _mirror_tick % (4 if low_cost else 2)
+			_mirror_vp.render_target_update_mode = SubViewport.UPDATE_ONCE if slot == 0 					else SubViewport.UPDATE_DISABLED
+			if _side_vp and not bike:
+				_side_vp.render_target_update_mode = SubViewport.UPDATE_ONCE if slot == 1 						else SubViewport.UPDATE_DISABLED
 	if bike:
 		_wheel.rotation.y = _wheel_angle
 	else:

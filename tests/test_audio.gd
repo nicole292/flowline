@@ -45,14 +45,15 @@ func test_scrape_follows_contact_with_fades() -> void:
 
 func test_engine_fades_when_run_ends() -> void:
 	var a := _director()
+	var e: AudioStreamPlayer = a._engine_players()[0]   # whichever engine sound is selected
 	a.start_engine()
 	a.update_engine(0.016, 30.0, 70.0, 1.0, false)
 	a.stop_engine()
-	t.check(a._engine_low.playing, "engine fades rather than cutting off")
+	t.check(e.playing, "engine fades rather than cutting off")
 	_run(a, 0.5)
-	t.check(not a._engine_low.playing, "engine stopped after the fade")
+	t.check(not e.playing, "engine stopped after the fade")
 	a.start_engine()
-	t.check(a._engine_low.playing and not a._fading.has(a._engine_low), "restart cancels the fade")
+	t.check(e.playing and not a._fading.has(e), "restart cancels the fade")
 	a.free()
 
 
@@ -67,10 +68,30 @@ func test_wavs_imported_uncompressed() -> void:
 func test_engine_softer_off_the_gas() -> void:
 	# The original engine: lifting off makes it about 5 dB softer, gliding there.
 	var a := _director()
+	a.engine_profile = "classic"
 	for i in 60:
 		a.update_engine(0.016, 40.0, 62.0, 1.0, false)
 	var on_db := a._engine_low.volume_db
 	for i in 60:
 		a.update_engine(0.016, 40.0, 62.0, 0.0, false)
 	t.check(a._engine_low.volume_db < on_db - 3.0, "quieter off the gas (%.1f -> %.1f dB)" % [on_db, a._engine_low.volume_db])
+	a.free()
+
+
+func test_sport_engine_swaps_recordings_on_and_off_the_gas() -> void:
+	# SPORT / MUSCLE: on the gas the exhaust take leads, off the gas the
+	# muffled coasting take; MUSCLE is pitched lower for the same revs.
+	var a := _director()
+	a.engine_profile = "sport"
+	for i in 60:
+		a.update_engine(0.016, 50.0, 62.0, 1.0, false)
+	t.check(a._real[1].volume_db > a._real[3].volume_db + 15.0, "gas: on-load take leads")
+	var sport_pitch := a._real[0].pitch_scale
+	for i in 60:
+		a.update_engine(0.016, 50.0, 62.0, 0.0, false)
+	t.check(a._real[3].volume_db > a._real[1].volume_db + 15.0, "off the gas: coasting take leads")
+	a.engine_profile = "muscle"
+	for i in 60:
+		a.update_engine(0.016, 50.0, 62.0, 1.0, false)
+	t.check(a._real[0].pitch_scale < sport_pitch * 0.85, "muscle is deeper")
 	a.free()

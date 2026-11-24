@@ -4,7 +4,7 @@ config_version=5
 [application]
 
 config/name="FLOWLINE"
-config/version="27"
+config/version="28"
 config/quit_on_go_back=false
 config/description="Endless highway traffic racer"
 run/main_scene="res://scenes/main.tscn"

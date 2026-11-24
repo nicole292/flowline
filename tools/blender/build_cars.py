@@ -1716,17 +1716,19 @@ def _cabin_details(mb, cx):
         tube(mb, (x - side * 0.02, 0.62, -0.40), (x - side * 0.04, 0.95, -0.38), 0.025, "Headliner")
         # Wing mirror outside the side glass: arm, body-coloured shell, glass.
         mx = x + side * 0.2
-        tube(mb, (x + side * 0.05, 0.88, -0.36), (mx, 0.9, -0.32), 0.022, "Paint")
+        # Mounted on the door at the foot of the A-pillar, glass at about
+        # eye level (it sat low, behind the on-screen controls).
+        tube(mb, (x + side * 0.05, 0.9, -0.34), (mx + side * 0.07, 0.92, -0.18), 0.022, "Paint")
         # Housing and glass, turned towards the driver like a real wing
         # mirror: the glass faces halfway between the driver's eye and
         # straight back, so it shows the traffic behind on that side.
-        gc = Vector((mx + side * 0.08, 0.875, -0.29))
+        gc = Vector((mx + side * 0.14, 0.9, -0.13))
         to_eye = (-gc).normalized()
         n = (Vector((to_eye.x, to_eye.y, 0.0)).normalized() + Vector((0.0, -1.0, 0.0))).normalized()
         turn = math.atan2(n.x, -n.y)   # rotation about Z taking (0,-1) onto n
         s0 = len(mb.verts)
-        ellipsoid(mb, (0.0, 0.035, 0.0), (0.12, 0.045, 0.075), "Paint")
-        ellipsoid(mb, (0.0, -0.012, 0.0), (0.108, 0.006, 0.064), "SideMirror")
+        ellipsoid(mb, (0.0, 0.04, 0.0), (0.145, 0.05, 0.09), "Paint")
+        ellipsoid(mb, (0.0, -0.012, 0.0), (0.132, 0.006, 0.078), "SideMirror")
         xform_since(mb, s0, Matrix.Rotation(turn, 3, "Z"), tuple(gc))
     # Tweeter covers at the foot of each A-pillar.
     for x in (-0.66, 1.40):

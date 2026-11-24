@@ -8,6 +8,13 @@ extends Node
 const GEARS := [0.0, 0.17, 0.31, 0.46, 0.62, 0.80, 1.01]
 
 var _engine_low: AudioStreamPlayer
+## Engine sound (Settings > Engine): "classic" = the original two synthesised
+## tones; "sport" = real recordings (CC0 Freesound, docs/audio_sources.md)
+## with an on-load (exhaust) and off-load (muffled coasting) take crossfaded
+## by the throttle, a roar near the redline, crackles and pops on lift-off,
+## as racing games do; "muscle" = the same, deeper and heavier.
+var engine_profile := "sport"
+var _real: Array[AudioStreamPlayer] = []   # low, high, low_off, high_off
 ## Two recordings of the engine, as racing games do: ON load (foot down:
 ## loud, raw exhaust) and OFF load (coasting or braking: the distant and
 ## engine-bay mics, muffled, with exhaust crackles while the revs fall).
@@ -58,6 +65,8 @@ func _ready() -> void:
 			AudioServer.set_bus_send(i, "Master")
 	_engine_low = _player("engine_low", "Engine", true)
 	_engine_high = _player("engine_high", "Engine", true)
+	for n in ["engine_real_low", "engine_real_high", "engine_real_low_off", "engine_real_high_off"]:
+		_real.append(_player(n, "Engine", true))
 	_scrape = _player("scrape", "Sfx", true)
 	_ui = _player("click", "Sfx")
 	for t in 3:
@@ -112,6 +121,14 @@ func _player(name: String, bus: String, loop := false) -> AudioStreamPlayer:
 
 
 func apply_settings(settings: Dictionary) -> void:
+	var prof := str(settings.get("engine_sound", "sport"))
+	if prof != engine_profile:
+		var running := _engine_players().any(func(p): return p.playing and not _fading.has(p))
+		for p in _engine_players():
+			_fade_out(p, 0.15)
+		engine_profile = prof
+		if running:
+			start_engine()
 	for bus in ["Music", "Sfx", "Engine"]:
 		var v := float(settings.get(bus.to_lower() if bus != "Sfx" else "sfx", 1.0))
 		var i := AudioServer.get_bus_index(bus)
@@ -119,15 +136,19 @@ func apply_settings(settings: Dictionary) -> void:
 		AudioServer.set_bus_mute(i, v <= 0.001)
 
 
+func _engine_players() -> Array:
+	return [_engine_low, _engine_high] if engine_profile == "classic" else _real
+
+
 func start_engine() -> void:
-	for p in [_engine_low, _engine_high]:
+	for p in _engine_players():
 		_fading.erase(p)
 		if not p.playing:
 			p.play()
 
 
 func stop_engine() -> void:
-	for p in [_engine_low, _engine_high]:
+	for p in _engine_players():
 		_fade_out(p, 0.25)
 	_gate(_scrape, false)
 	_gate(_horn, false)
@@ -223,16 +244,31 @@ func update_engine(dt: float, speed: float, top_speed: float, throttle: float, s
 		_gear -= 1
 	if _gear != was:
 		_shift_t = SHIFT_TIME
+		if engine_profile != "classic" and _gear > was and _rpm > 0.8 and randf() < 0.3:
+			_pop()   # the odd crack on a full-throttle upshift
 	_shift_t = maxf(0.0, _shift_t - dt)
 	var target := rpm_for(sf, _gear)
 	# Revs snap to the new gear during a shift, then follow smoothly.
-	_rpm = lerpf(_rpm, target, 1.0 - exp(-9.0 * dt))
+	# Real engines: revs snap to the new gear during a shift, then follow.
+	var snap := _shift_t > 0.0 and engine_profile != "classic"
+	_rpm = lerpf(_rpm, target, 1.0 - exp(-(30.0 if snap else 9.0) * dt))
 	# Lifting off at high revs: exhaust pops.
 	_pop_cool = maxf(0.0, _pop_cool - dt)
+	if engine_profile != "classic" and _prev_throttle > 0.5 and throttle <= 0.5 and _rpm > 0.6 and randf() < 0.75:
+		_pop()
 	_prev_throttle = throttle
-	# The original FLOWLINE engine (Stage 2, by player request 2026-11-24):
-	# two synthesised tones, a deep one and a high one, crossfading as the
-	# revs rise; lifting off makes it 5 dB softer. No exhaust pops.
+	if engine_profile == "classic":
+		_mix_classic(dt, throttle)
+	else:
+		_mix_real(dt, throttle, engine_profile == "muscle")
+	_scrape_t = 0.25 if scraping else maxf(0.0, _scrape_t - dt)
+	_gate(_scrape, _scrape_t > 0.0)
+
+
+## The original FLOWLINE engine (Stage 2, by player request 2026-11-24):
+## two synthesised tones, a deep one and a high one, crossfading as the
+## revs rise; lifting off makes it 5 dB softer. No exhaust pops.
+func _mix_classic(dt: float, throttle: float) -> void:
 	var fire_hz := lerpf(38.0, 200.0, _rpm)
 	_engine_low.pitch_scale = clampf(fire_hz / 60.0, 0.3, 4.0)
 	_engine_high.pitch_scale = clampf(fire_hz / 120.0, 0.3, 4.0)
@@ -241,8 +277,42 @@ func update_engine(dt: float, speed: float, top_speed: float, throttle: float, s
 	var load_db := lerpf(-5.0, 0.0, _load)
 	_engine_low.volume_db = linear_to_db(lerpf(1.0, 0.35, hi_mix)) - 4.0 + load_db
 	_engine_high.volume_db = linear_to_db(maxf(hi_mix, 0.02)) - 6.0 + load_db
-	_scrape_t = 0.25 if scraping else maxf(0.0, _scrape_t - dt)
-	_gate(_scrape, _scrape_t > 0.0)
+
+
+## Real recordings (dyno sessions at ~2550 and ~6200 rpm, firing at 85 and
+## 206 Hz): each layer is pitched only a little and they crossfade at equal
+## power; on-load and off-load takes crossfade with the throttle.
+## muscle: everything pitched ~30% lower with more of the deep layer.
+func _mix_real(dt: float, throttle: float, muscle: bool) -> void:
+	var fire_hz := 70.0 * pow(290.0 / 70.0, _rpm) if bike else 55.0 * pow(240.0 / 55.0, _rpm)
+	if muscle:
+		fire_hz *= 0.7
+	var lo_pitch := clampf(fire_hz / 85.0, 0.45, 2.2)
+	var hi_pitch := clampf(fire_hz / 206.0, 0.45, 1.4)
+	_real[0].pitch_scale = lo_pitch
+	_real[1].pitch_scale = hi_pitch
+	_real[2].pitch_scale = lo_pitch
+	_real[3].pitch_scale = hi_pitch
+	var hi_mix := smoothstep(115.0, 165.0, fire_hz) if not muscle else smoothstep(95.0, 160.0, fire_hz) * 0.8
+	# Foot down: the loud exhaust take within ~0.1 s; lifting off fades over
+	# ~0.25 s into the muffled coasting take.
+	_load = move_toward(_load, 1.0 if throttle > 0.5 else 0.0, dt * (9.0 if throttle > 0.5 else 4.0))
+	var shift_db := -6.0 * (_shift_t / SHIFT_TIME)   # the gap while the clutch is in
+	var roar_db := (3.5 if muscle else 2.5) * smoothstep(0.75, 1.0, _rpm) * _load   # flat out: louder still
+	var on_db := linear_to_db(maxf(sin(_load * PI * 0.5), 0.001)) + shift_db + roar_db - 3.0
+	var off_db := linear_to_db(maxf(cos(_load * PI * 0.5), 0.001)) + shift_db - 5.0
+	var lo_g := linear_to_db(maxf(cos(hi_mix * PI * 0.5), 0.01)) + (1.5 if muscle else 0.0)
+	var hi_g := linear_to_db(maxf(sin(hi_mix * PI * 0.5), 0.01))
+	_real[0].volume_db = lo_g + on_db
+	_real[1].volume_db = hi_g + on_db
+	_real[2].volume_db = lo_g + off_db
+	_real[3].volume_db = hi_g + off_db
+	# Coasting at high revs: the exhaust crackles and burbles now and then.
+	_crackle_t -= dt
+	if _load < 0.3 and _rpm > 0.45 and _crackle_t <= 0.0:
+		_crackle_t = randf_range(0.22, 0.65)
+		if randf() < 0.7:
+			_crackle()
 
 
 ## A small, quiet pop for the off-throttle burble (separate from the big bang).
@@ -286,6 +356,8 @@ func crash() -> void:
 	_gate(_horn, false)
 	_gate(_scrape, false)
 	_fade_out(_engine_high, 0.15)
+	_fade_out(_real[1], 0.15)
+	_fade_out(_real[3], 0.15)
 
 
 func click() -> void:

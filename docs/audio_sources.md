@@ -4,13 +4,29 @@ Every sound in the game is either synthesised by our own scripts or a
 recording released under **CC0 1.0** (public domain dedication: free for
 commercial use, no attribution required). Sources are listed anyway.
 
-## Engine (assets/audio/engine_low.wav, engine_high.wav)
+## Engine
 
-Since 2026-11-24 the game uses its original engine again: two tones
-synthesised by our own `tools/audio/make_sfx.py` (first version, commit
-e9314f6). No recordings. The CC0 Freesound "Dyno Sessions: 190E" mixes
-used from 2026-11-10 to 2026-11-24 are no longer in the game
-(`tools/audio/real_engine.py` can still rebuild them).
+Settings > Engine chooses one of three sounds (default SPORT):
+
+- **CLASSIC** (`engine_low.wav`, `engine_high.wav`): the game's original
+  engine, two tones synthesised by our own `tools/audio/make_sfx.py`
+  (first version, commit e9314f6). No recordings.
+- **SPORT / MUSCLE** (`engine_real_low.wav`, `engine_real_high.wav`,
+  `engine_real_low_off.wav`, `engine_real_high_off.wav`): built by
+  `tools/audio/real_engine.py` (`exhaust` for the on-load pair, `offload`
+  for the coasting pair) from the Freesound pack **"The Dyno Sessions: 190E"**
+  by **Chippy569**, a Mercedes-Benz 190E 2.3-16V on a dynamometer. CC0 1.0.
+
+| Freesound id | Clip | Used for |
+|---|---|---|
+| 162509 | 19_2500_D6 (exhaust mic) | on-load low layer (~2550 rpm) |
+| 162512 | 20_6500_D6 (exhaust mic) | on-load high layer (~6200 rpm) |
+| 162510 | 19_2500_4062 (engine-bay mic) | coasting low layer |
+| 162508 | 19_2500_Distant | coasting low layer |
+| 162513 | 20_6500_4062 (engine-bay mic) | coasting high layer |
+| 162511 | 20_6500_Distant | coasting high layer |
+
+Pages: `https://freesound.org/people/Chippy569/sounds/<id>/`
 
 ## Exhaust pops (assets/audio/pop_*.wav)
 
