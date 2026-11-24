@@ -892,6 +892,12 @@ func _build_settings() -> Control:
 		v.add_child(_slider(spec[1]))
 		vols.add_child(v)
 	snd.add_child(vols)
+	# Which build this is (for bug reports), small at the very bottom.
+	var ver := _label("FLOWLINE  ·  build %s  ·  %s" % [ProjectSettings.get_setting("application/config/version", "?"),
+			RenderingServer.get_current_rendering_method()], "", 16)
+	ver.modulate.a = 0.6
+	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	panel.add_child(ver)
 	s.add_child(_scroller(panel))
 	return s
 

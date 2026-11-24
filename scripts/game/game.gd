@@ -843,9 +843,9 @@ func _process(dt: float) -> void:
 		_fps_frames += 1
 		_fps_worst = maxf(_fps_worst, dt)
 		if _fps_t >= 1.0:
-			_fps_label.text = "%d FPS   worst %d ms   %s   3D %d%%%s" % [_fps_frames, int(_fps_worst * 1000.0),
+			_fps_label.text = "%d FPS   worst %d ms   %s   3D %d%%%s   build %s" % [_fps_frames, int(_fps_worst * 1000.0),
 					RenderingServer.get_current_rendering_method(), int(round(_auto_scale * 100.0)),
-					"" if not _shadows_cut else "   no shadows"]
+					"" if not _shadows_cut else "   no shadows", ProjectSettings.get_setting("application/config/version", "?")]
 			_fps_t = 0.0
 			_fps_frames = 0
 			_fps_worst = 0.0
@@ -955,6 +955,10 @@ func _apply_camera() -> void:
 	cockpit.visible = _cockpit_on
 	player_view.set_body_visible(not _cockpit_on)
 	camera.hood = cam == "cockpit"
+	# Depth precision: phones keep less of it than PCs, and with the near
+	# plane at 0.15 m surfaces a few cm apart flickered far away (car shadow
+	# blobs on the road). Only the cockpit needs the close near plane.
+	camera.near = 0.12 if _cockpit_on else 0.5
 	camera.lean = 0.0
 	# Bikes are short and low, so the chase view sits a little closer.
 	camera.distance = 4.6 if player_view.is_bike else 6.4

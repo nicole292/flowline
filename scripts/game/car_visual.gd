@@ -465,6 +465,11 @@ func _add_shadow() -> void:
 	q.rotation.x = -PI / 2
 	q.position.y = 0.06  # high enough not to flicker against the road far away
 	q.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# Far away it is a few pixels wide and the closest thing to z-fighting in
+	# the scene (6 cm over the road): fade it out instead.
+	q.visibility_range_end = 150.0
+	q.visibility_range_end_margin = 30.0
+	q.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 	add_child(q)
 
 
