@@ -197,6 +197,15 @@ func horn(on: bool) -> void:
 
 
 ## Engine RPM from speed through a 6-speed box; 0..1 within the rev range.
+## Engine revs 0..1 and the current gear, for the cockpit instruments.
+func engine_rpm() -> float:
+	return _rpm
+
+
+func gear_number() -> int:
+	return _gear
+
+
 static func rpm_for(speed_frac: float, gear: int) -> float:
 	var lo: float = GEARS[gear - 1]
 	var hi: float = GEARS[gear]

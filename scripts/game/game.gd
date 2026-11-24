@@ -185,6 +185,7 @@ func _ready() -> void:
 	add_child(player_root)
 	player_view = CarVisual.new()
 	player_view.brake_glow = true
+	player_view.persistent_lights = true
 	player_root.add_child(player_view)
 	_show_car(save.selected_car, CarCatalog.paint_for(save.selected_car, save.paint_index(save.selected_car)),
 			save.rim_index(save.selected_car))
@@ -635,7 +636,9 @@ func _spawn_wreck_view(a: TrafficSim.Agent) -> void:
 	v.setup(id if a.police else WRECK_MODELS.get(id, id), Color(0.92, 0.92, 0.93), true)
 	if not a.police:
 		v.set_paint(_next_paint())
-	v.set_headlights(a.police and world.is_night)
+	# Police cars glow (lamps, light bar) but cast no headlight beams: three
+	# new spot lights per patrol car at night made OpenGL stall on first sight.
+	v.set_headlights(false)
 	v.position = Vector3(a.x, 0, a.z)
 	v.rotation = Vector3(0, a.yaw, 0.0 if a.police else sim.rng.randf_range(-0.035, 0.035))
 	_views[a.id] = v
@@ -694,11 +697,12 @@ func _warm_up() -> void:
 			v.position = hide_at
 			v.visible = true
 	var temp: Array[Node3D] = []
-	for id in WRECK_MODELS.values():
+	for id in WRECK_MODELS.values() + ["t_police"]:   # wrecks and the patrol car at crash sites
 		var w := CarVisual.new()
 		add_child(w)
 		w.setup(id, Color.WHITE, true)
 		w.position = hide_at
+		w.update_siren(0.0)
 		temp.append(w)
 	var site := CrashSite.new()
 	add_child(site)
@@ -722,18 +726,23 @@ func _warm_up() -> void:
 	# when the first tunnel switched the headlights on. Temporary lights of
 	# both kinds right here light every warm-up object, the road and verges
 	# above them, so all those versions are built now, before driving.
-	for kind in ["spot", "omni"]:
-		var l: Light3D = SpotLight3D.new() if kind == "spot" else OmniLight3D.new()
+	# Spot lights only light what is inside their cone: one points up (road,
+	# verges), one down (the hidden cars, cockpit and tunnel piece), so every
+	# object gets its "lit by a spot light" shader built. (With only the
+	# upward spot, entering the first tunnel still froze ~130 ms on a fresh
+	# install: the headlights lit tunnel walls and the cockpit for the first time.)
+	for kind in ["spot_up", "spot_down", "omni"]:
+		var l: Light3D = OmniLight3D.new() if kind == "omni" else SpotLight3D.new()
 		if l is SpotLight3D:
-			(l as SpotLight3D).spot_range = 70.0
-			(l as SpotLight3D).spot_angle = 85.0
+			(l as SpotLight3D).spot_range = 80.0
+			(l as SpotLight3D).spot_angle = 89.0
 		else:
-			(l as OmniLight3D).omni_range = 70.0
+			(l as OmniLight3D).omni_range = 80.0
 		l.light_energy = 0.01
 		l.shadow_enabled = false
 		add_child(l)
-		l.global_position = hide_at + Vector3(0, 4.0, 6.0)
-		l.rotation.x = deg_to_rad(60.0)   # tipped up towards the road and the objects
+		l.global_position = hide_at + Vector3(0, 2.0, 0)
+		l.rotation.x = deg_to_rad(90.0 if kind == "spot_up" else -90.0)
 		temp.append(l)
 	for i in 3:
 		await get_tree().process_frame
@@ -1172,7 +1181,9 @@ func _update_player_view(dt: float, brake: float) -> void:
 	player_view.animate(dt, model.speed, -model.steer_input * 0.22, roll, pitch)
 	player_view.set_brake(brake > 0.0)
 	if _cockpit_on:
-		cockpit.update(model.steer_input)
+		var kmh := model.speed * 3.6
+		cockpit.update(model.steer_input, model.speed / model.top_speed, audio.engine_rpm(), audio.gear_number(),
+				"%d %s" % [int(round(kmh / 1.609 if hud.mph else kmh)), "MPH" if hud.mph else "KM/H"])
 		camera.lean = -player_view.lean * 0.5
 
 

@@ -101,3 +101,21 @@ func test_turning_the_other_way_is_immediate() -> void:
 		m.step(1.0 / 60.0, 1.0, 0.0, -1.0)
 		time += 1.0 / 60.0
 	t.check(time < 0.25, "reversed direction in %f s" % time)
+
+
+func test_cockpit_wheel_turns_smoothly() -> void:
+	# The cockpit wheel eases to a sudden full steer: no jump in the first
+	# frame, most of the way in ~0.3 s, and no overshoot.
+	var c := Cockpit.new()
+	t.root.add_child(c)
+	c.build(false, StandardMaterial3D.new())
+	var trace: Array[float] = []
+	for i in 30:   # 0.5 s at 60 fps, via the same spring the game uses
+		c._wheel_vel += (Cockpit.WHEEL_SMOOTH * Cockpit.WHEEL_SMOOTH * (-Cockpit.WHEEL_TURN - c._wheel_angle)
+				- 2.0 * Cockpit.WHEEL_SMOOTH * c._wheel_vel) / 60.0
+		c._wheel_angle += c._wheel_vel / 60.0
+		trace.append(c._wheel_angle / -Cockpit.WHEEL_TURN)
+	t.check(trace[0] < 0.1, "first frame moves only a little (%.2f)" % trace[0])
+	t.check(trace[18] > 0.85, "most of the way after 0.3 s (%.2f)" % trace[18])
+	t.check(trace.max() <= 1.0001, "no overshoot (%.3f)" % trace.max())
+	c.free()

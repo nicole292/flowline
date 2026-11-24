@@ -29,6 +29,15 @@ var _mirror_vp: SubViewport
 var _mirror_cam: Camera3D
 var _mirror_mat: StandardMaterial3D
 var _mirrors: Array[MeshInstance3D] = []
+## The wheel turns like a real one: it eases towards the steering with a
+## little momentum instead of snapping (arrow buttons are on/off).
+var _wheel_angle := 0.0
+var _wheel_vel := 0.0
+const WHEEL_SMOOTH := 14.0   ## spring rate (1/s); higher = snappier
+## Live instruments: needles on both dials and the gear/speed screen.
+var _needles: Array[Node3D] = []   # [rev counter, speedometer]
+var _screen_text: Label3D
+var _needle_v := [0.0, 0.0]
 ## Slow device (graphics lowered): the mirror refreshes every other frame.
 var low_cost := false
 var _mirror_tick := 0
@@ -64,6 +73,7 @@ func build(is_bike: bool, paint: Material) -> void:
 		var arm := MeshInstance3D.new()
 		var c := CapsuleMesh.new()
 		c.radius = 0.048 if bike else 0.045
+		c.height = 1.0   # stretched by scaling each frame (rebuilding the mesh every frame stuttered)
 		c.radial_segments = 16
 		c.rings = 6
 		arm.mesh = c
@@ -76,6 +86,9 @@ func build(is_bike: bool, paint: Material) -> void:
 	for a in _arms:
 		a.layers = LAYER
 	_build_mirrors()
+	_build_instruments()
+	_wheel_angle = 0.0
+	_wheel_vel = 0.0
 	update(0.0)
 
 
@@ -92,7 +105,7 @@ func _build_mirrors() -> void:
 	_mirrors.clear()
 	if _mirror_vp == null:
 		_mirror_vp = SubViewport.new()
-		_mirror_vp.size = Vector2i(320, 80)
+		_mirror_vp.size = Vector2i(384, 96)
 		_mirror_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
 		add_child(_mirror_vp)
 		_mirror_cam = Camera3D.new()
@@ -105,11 +118,25 @@ func _build_mirrors() -> void:
 		_mirror_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		_mirror_mat.albedo_texture = _mirror_vp.get_texture()
 	var boxes: Array[AABB] = []
+	var wings: Array[AABB] = []   # car wing mirrors (material "SideMirror")
 	for mi in _model.find_children("*", "MeshInstance3D", true, false):
 		var mesh: Mesh = (mi as MeshInstance3D).mesh
 		var xf := _to_cockpit(mi as Node3D)
 		for i in mesh.get_surface_count():
 			var src := mesh.surface_get_material(i)
+			if src and src.resource_name == "SideMirror":
+				for side in [-1.0, 1.0]:  # left and right wing mirror, split at the car's centre line
+					var wb := AABB()
+					var wfirst := true
+					for v in mesh.surface_get_arrays(i)[Mesh.ARRAY_VERTEX]:
+						var p: Vector3 = xf * v
+						if signf(p.x - 0.37) != side:
+							continue
+						wb = AABB(p, Vector3.ZERO) if wfirst else wb.expand(p)
+						wfirst = false
+					if not wfirst:
+						wings.append(wb)
+				continue
 			if src == null or src.resource_name != "Mirror":
 				continue
 			var sides := [-1.0, 1.0] if bike else [0.0]
@@ -124,6 +151,29 @@ func _build_mirrors() -> void:
 					first = false
 				if not first:
 					boxes.append(box)
+	# Wing mirrors show the outer thirds of the same live rear view (no extra
+	# rendering): the left mirror the traffic behind on the left, the right
+	# mirror behind on the right, each flipped like real glass.
+	for box in wings:
+		var q := MeshInstance3D.new()
+		var qm := QuadMesh.new()
+		qm.size = Vector2(0.2, box.size.y * 0.93)
+		q.mesh = qm
+		var mat: StandardMaterial3D = _mirror_mat.duplicate()
+		var left := box.get_center().x < 0.37
+		mat.uv1_scale = Vector3(-1.0 / 3.0, 1, 1)
+		mat.uv1_offset = Vector3(1.0 if left else 1.0 / 3.0, 0, 0)
+		q.material_override = mat
+		q.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		q.layers = LAYER
+		# Turned like the glass: halfway between the driver's eye (the origin)
+		# and straight back (+z), level.
+		var c := box.get_center()
+		var to_eye := Vector3(-c.x, 0.0, -c.z).normalized()
+		var nrm := (to_eye + Vector3.BACK).normalized()
+		q.transform = Transform3D(Basis.looking_at(-nrm, Vector3.UP), c + nrm * 0.004)
+		add_child(q)
+		_mirrors.append(q)
 	for box in boxes:
 		var q := MeshInstance3D.new()
 		var qm := QuadMesh.new()
@@ -145,6 +195,71 @@ func _build_mirrors() -> void:
 		q.position = Vector3(box.get_center().x, box.get_center().y, box.end.z + 0.0015)
 		add_child(q)
 		_mirrors.append(q)
+
+
+## Needles (rev counter, speedometer) and the small screen's text, placed at
+## the Dial_L / Dial_R / Cluster_C empties of the car cockpit model.
+func _build_instruments() -> void:
+	_needles.clear()
+	_screen_text = null
+	if bike:
+		return
+	# The dials lean back 20 degrees: their face points up a little, at the driver.
+	var n := Vector3(0, sin(deg_to_rad(20.0)), cos(deg_to_rad(20.0)))
+	var up := Vector3(0, cos(deg_to_rad(20.0)), -sin(deg_to_rad(20.0)))
+	var face := Basis(up.cross(n), up, n)
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = Color(1.0, 0.35, 0.12)
+	for dial in ["Dial_L", "Dial_R"]:
+		var e: Node3D = _model.find_child(dial, true, false)
+		if e == null:
+			continue
+		var pivot := Node3D.new()
+		_model.add_child(pivot)
+		pivot.transform = Transform3D(face, _to_cockpit(e).origin - _model.position)
+		var needle := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.005, 0.068, 0.002)
+		needle.mesh = bm
+		needle.material_override = mat
+		needle.position = Vector3(0, 0.026, 0.003)
+		needle.layers = LAYER
+		needle.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		pivot.add_child(needle)
+		_needles.append(pivot)
+	var c: Node3D = _model.find_child("Cluster_C", true, false)
+	if c:
+		_screen_text = Label3D.new()
+		_screen_text.font = UiTheme.BOLD
+		_screen_text.font_size = 48
+		_screen_text.pixel_size = 0.0004
+		_screen_text.modulate = Color(0.75, 0.92, 1.0)
+		_screen_text.outline_size = 0
+		_screen_text.shaded = false
+		_screen_text.layers = LAYER
+		_screen_text.transform = Transform3D(face, _to_cockpit(c).origin - _model.position + n * 0.004)
+		_model.add_child(_screen_text)
+
+
+func _update_instruments(dt: float, speed_frac: float, rpm: float, gear: int, speed_text: String) -> void:
+	if _needles.size() < 2:
+		return
+	# 0 points down-left (+135 deg), full scale down-right (-135 deg); needles
+	# follow with a short lag like real gauges.
+	for i in 2:
+		var want: float = clampf(rpm if i == 0 else speed_frac, 0.0, 1.0)
+		_needle_v[i] = lerpf(_needle_v[i], want, 1.0 - exp(-12.0 * dt))
+		_needles[i].transform.basis = _needle_face() * Basis(Vector3.BACK, deg_to_rad(lerpf(135.0, -135.0, _needle_v[i])))
+	if _screen_text:
+		_screen_text.text = "%d
+%s" % [gear, speed_text]
+
+
+func _needle_face() -> Basis:
+	var n := Vector3(0, sin(deg_to_rad(20.0)), cos(deg_to_rad(20.0)))
+	var up := Vector3(0, cos(deg_to_rad(20.0)), -sin(deg_to_rad(20.0)))
+	return Basis(up.cross(n), up, n)
 
 
 func _to_cockpit(n: Node3D) -> Transform3D:
@@ -196,10 +311,18 @@ func set_skin(tone: String) -> void:
 	_skin.rim_tint = 0.6
 
 
-## steer: -1 (left) .. 1 (right).
-func update(steer: float) -> void:
+## steer: -1 (left) .. 1 (right). speed_frac / rpm 0..1, gear and speed
+## text for the instruments (car only).
+func update(steer: float, speed_frac := 0.0, rpm := 0.0, gear := 1, speed_text := "") -> void:
 	if _wheel == null:
 		return
+	var dt := clampf(get_process_delta_time(), 0.0, 0.05)
+	# Critically damped spring: smooth start and stop, no overshoot.
+	var target := -steer * (BAR_TURN if bike else WHEEL_TURN)
+	var acc := WHEEL_SMOOTH * WHEEL_SMOOTH * (target - _wheel_angle) - 2.0 * WHEEL_SMOOTH * _wheel_vel
+	_wheel_vel += acc * dt
+	_wheel_angle += _wheel_vel * dt
+	_update_instruments(dt, speed_frac, rpm, gear, speed_text)
 	if _mirror_cam:  # from just above the eye, looking straight back
 		var b := global_basis.orthonormalized()
 		_mirror_cam.global_transform = Transform3D(b * Basis(Vector3.UP, PI), global_position + b.y * 0.12)
@@ -210,16 +333,15 @@ func update(steer: float) -> void:
 				mode = SubViewport.UPDATE_ONCE if _mirror_tick % 2 == 0 else SubViewport.UPDATE_DISABLED
 			_mirror_vp.render_target_update_mode = mode
 	if bike:
-		_wheel.rotation.y = -steer * BAR_TURN
+		_wheel.rotation.y = _wheel_angle
 	else:
-		_wheel.rotation.z = -steer * WHEEL_TURN
+		_wheel.rotation.z = _wheel_angle
 	# Stretch each forearm from the shoulder to the wrist.
 	for i in _arms.size():
 		var wrist := to_local(_wrists[i].global_position)
 		var from: Vector3 = _shoulders[i]
 		var v := wrist - from
 		var arm := _arms[i]
-		(arm.mesh as CapsuleMesh).height = v.length() + 0.06
 		var up := v.normalized()
 		var side := up.cross(Vector3.BACK).normalized() if absf(up.z) < 0.99 else Vector3.RIGHT
-		arm.transform = Transform3D(Basis(side, up, side.cross(up)), from + v * 0.5)
+		arm.transform = Transform3D(Basis(side, up * (v.length() + 0.06), side.cross(up)), from + v * 0.5)

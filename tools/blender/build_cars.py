@@ -256,12 +256,15 @@ def materials_for(paint):
         "Alu": make_material("Alu", (0.62, 0.63, 0.66), 1.0, 0.32),
         "ScreenUI": make_material("ScreenUI", (0.05, 0.25, 0.45), 0.0, 0.2, emit=(0.2, 0.55, 1.0), emit_str=0.9),
         "Stitch": make_material("Stitch", (0.55, 0.12, 0.06), 0.0, 0.7),
+        "LampGreen": make_material("LampGreen", (0.05, 0.5, 0.15), 0.0, 0.3, emit=(0.1, 1.0, 0.3), emit_str=1.2),
+        "LampAmber": make_material("LampAmber", (0.6, 0.35, 0.02), 0.0, 0.3, emit=(1.0, 0.6, 0.05), emit_str=1.2),
+        "SideMirror": make_material("SideMirror", (0.8, 0.82, 0.85), 1.0, 0.03),
     }
 
 
 MAT_ORDER = ["Paint", "Glass", "Trim", "Chrome", "Tire", "Rim", "Headlight", "Taillight",
              "TailLens", "Plate", "Gloss", "Caliper", "Suit", "Accent", "Cracked", "Livery", "SirenRed",
-             "SirenBlue", "Gold", "Dash", "Leather", "Glove", "Dial", "Screen", "Headliner", "Mirror", "Shield", "Skin", "Alu", "ScreenUI", "Stitch"]
+             "SirenBlue", "Gold", "Dash", "Leather", "Glove", "Dial", "Screen", "Headliner", "Mirror", "Shield", "Skin", "Alu", "ScreenUI", "Stitch", "LampGreen", "LampAmber", "SideMirror"]
 
 
 def shield_material():
@@ -1714,8 +1717,17 @@ def _cabin_details(mb, cx):
         # Wing mirror outside the side glass: arm, body-coloured shell, glass.
         mx = x + side * 0.2
         tube(mb, (x + side * 0.05, 0.88, -0.36), (mx, 0.9, -0.32), 0.022, "Paint")
-        ellipsoid(mb, (mx + side * 0.08, 0.93, -0.29), (0.12, 0.06, 0.075), "Paint")
-        ellipsoid(mb, (mx + side * 0.08, 0.875, -0.29), (0.105, 0.008, 0.062), "Chrome")
+        # Housing and glass, turned towards the driver like a real wing
+        # mirror: the glass faces halfway between the driver's eye and
+        # straight back, so it shows the traffic behind on that side.
+        gc = Vector((mx + side * 0.08, 0.875, -0.29))
+        to_eye = (-gc).normalized()
+        n = (Vector((to_eye.x, to_eye.y, 0.0)).normalized() + Vector((0.0, -1.0, 0.0))).normalized()
+        turn = math.atan2(n.x, -n.y)   # rotation about Z taking (0,-1) onto n
+        s0 = len(mb.verts)
+        ellipsoid(mb, (0.0, 0.035, 0.0), (0.12, 0.045, 0.075), "Paint")
+        ellipsoid(mb, (0.0, -0.012, 0.0), (0.108, 0.006, 0.064), "SideMirror")
+        xform_since(mb, s0, Matrix.Rotation(turn, 3, "Z"), tuple(gc))
     # Tweeter covers at the foot of each A-pillar.
     for x in (-0.66, 1.40):
         ellipsoid(mb, (x, 0.9, -0.36), (0.05, 0.05, 0.025), "Trim")
@@ -1729,24 +1741,41 @@ def build_cockpit_car(mats):
     extrude_x(mb, [(0.62, -0.68), (0.60, -0.52), (0.60, -0.37), (0.65, -0.325), (0.90, -0.34),
                    (1.20, -0.45), (1.24, -0.68)], -0.82, 1.56, "Dash", slices=16)
     # Instrument cluster, seen through the top of the wheel: a dark face
-    # plate leaning back, two lit dials and a cowl shading them.
+    # plate leaning back, two big lit dials (rev counter left, speedometer
+    # right) with tick marks, a small screen between them for gear and speed,
+    # a row of warning lights, and a cowl shading it all. The needles and the
+    # screen text are live, added by the game at the Dial_L / Dial_R /
+    # Cluster_C empties (Cockpit.gd).
     tip = Matrix.Rotation(math.radians(-20), 3, "X")
-    mb.box((0, 0.80, -0.32), (0.38, 0.12, 0.13), "Dash")
-    mb.box((0, 0.815, -0.205), (0.36, 0.02, 0.17), "Trim", rot=tip)
+    mb.box((0, 0.80, -0.32), (0.5, 0.12, 0.13), "Dash")
+    mb.box((0, 0.815, -0.225), (0.48, 0.02, 0.235), "Trim", rot=tip)
     # Binnacle hood: a rounded lip curling over the dials, like a moulded part.
-    extrude_x(mb, [(0.86, -0.29), (0.84, -0.14), (0.78, -0.105), (0.69, -0.098), (0.635, -0.112),
-                   (0.628, -0.128), (0.645, -0.126), (0.70, -0.118), (0.78, -0.126), (0.82, -0.16),
-                   (0.835, -0.29)], -0.215, 0.215, "Dash", slices=8)
+    extrude_x(mb, [(0.86, -0.25), (0.84, -0.10), (0.78, -0.062), (0.69, -0.055), (0.635, -0.068),
+                   (0.628, -0.084), (0.645, -0.082), (0.70, -0.075), (0.78, -0.083), (0.82, -0.12),
+                   (0.835, -0.25)], -0.27, 0.27, "Dash", slices=10)
     for sx in (-1, 1):  # cowl cheeks
-        mb.box((sx * 0.2, 0.77, -0.2), (0.022, 0.16, 0.17), "Dash")
-    for x in (-0.095, 0.095):
-        s = len(mb.verts)
-        mb.revolve([(0.062, 0.0), (0.062, 0.008)], 32, "Chrome")
-        mb.revolve([(0.058, 0.002), (0.044, 0.002)], 32, "Dial")  # lit scale
-        mb.revolve([(0.044, 0.003), (0.001, 0.003)], 32, "Trim")
-        mb.box((0.005, 0.012, 0.022), (0.003, 0.004, 0.045), "Caliper", rot=Matrix.Rotation(-0.6, 3, "X"))  # needle
-        # Built around +x; turn it to face the driver (-y), tipped up a little.
-        xform_since(mb, s, tip @ Matrix.Rotation(-math.pi / 2, 3, "Z"), (x, 0.797, -0.19))
+        mb.box((sx * 0.255, 0.77, -0.175), (0.022, 0.16, 0.22), "Dash")
+    R = 0.082
+    for name, x in (("Dial_L", -0.125), ("Dial_R", 0.125)):
+        s0 = len(mb.verts)
+        mb.revolve([(R, 0.0), (R, 0.009)], 40, "Chrome")
+        mb.revolve([(R - 0.004, 0.002), (R - 0.02, 0.002)], 40, "Dial")  # lit scale
+        mb.revolve([(R - 0.02, 0.003), (0.001, 0.003)], 40, "Trim")
+        # Tick marks round the lit scale (270 degrees), every 4th one longer.
+        for k in range(19):
+            th = math.radians(-135 + k * 15)
+            ln = 0.016 if k % 3 == 0 else 0.009
+            r = R - 0.006 - ln / 2
+            mb.box((0.004, r * math.sin(th), r * math.cos(th)), (0.002, 0.003, ln), "Accent",
+                   rot=Matrix.Rotation(-th, 3, "X"))
+        mb.revolve([(0.009, 0.006), (0.001, 0.006)], 16, "Chrome")   # needle hub
+        xform_since(mb, s0, tip @ Matrix.Rotation(-math.pi / 2, 3, "Z"), (x, 0.797, -0.222))
+        empty(name, (x, 0.797 - 0.01, -0.222), root)
+    # Centre screen between the dials, and the warning-light row under it.
+    mb.box((0, 0.803, -0.2), (0.095, 0.006, 0.07), "Screen", rot=tip)
+    empty("Cluster_C", (0, 0.795, -0.2), root)
+    for k, m in enumerate(("LampGreen", "LampAmber", "Taillight", "Dial", "LampAmber", "LampGreen")):
+        mb.box((-0.05 + k * 0.02, 0.80, -0.262), (0.009, 0.004, 0.009), m, rot=tip)
     # Centre screen, vents, console.
     mb.box((cx, 0.74, -0.27), (0.26, 0.012, 0.15), "Trim", rot=Matrix.Rotation(-0.35, 3, "X"))
     mb.box((cx, 0.733, -0.269), (0.24, 0.004, 0.13), "Screen", rot=Matrix.Rotation(-0.35, 3, "X"))

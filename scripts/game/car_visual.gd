@@ -28,6 +28,15 @@ var _wheels: Array[Dictionary] = []   # {node, base, steer, sign}
 var _paint: StandardMaterial3D
 var _rim: StandardMaterial3D
 var _lights: Array[SpotLight3D] = []
+## Player car: its headlights and brake glow always exist and are only
+## dimmed to zero when off. On OpenGL (Android) a light that appears for the
+## first time makes every surface it touches build a new shader version - a
+## 70-140 ms freeze when the first tunnel switched the headlights on. With
+## the lights always present (dark in daylight) those shaders are built at
+## start, and switching on only changes brightness.
+var persistent_lights := false
+var _head_k := 0.0       ## headlight brightness 0..1, glides
+var _head_target := 0.0
 var _fill: OmniLight3D
 var _plates: Array[Label3D] = []
 var _tail_slots: Array = []           # [MeshInstance3D, surface]
@@ -236,7 +245,9 @@ func update_siren(t: float) -> void:
 	var blue_on := phase >= 0.4 and fmod(phase, 0.2) < 0.11
 	(shared_material("SirenRed") as StandardMaterial3D).emission_energy_multiplier = 9.0 if red_on else 0.6
 	(shared_material("SirenBlue") as StandardMaterial3D).emission_energy_multiplier = 9.0 if blue_on else 0.6
-	_siren.visible = red_on or blue_on
+	# Flashes by brightness, never by showing/hiding: a light that keeps
+	# appearing makes OpenGL build shader versions on first sight (stalls).
+	_siren.light_energy = 2.5 if (red_on or blue_on) else 0.0
 	_siren.light_color = Color(1.0, 0.1, 0.05) if red_on else Color(0.15, 0.3, 1.0)
 
 
@@ -271,13 +282,14 @@ func set_rim(index: int) -> void:
 ## beams that light the road far ahead (playtest: "make sure I can see the
 ## road"), plus one wide low beam that floods the lanes just in front.
 func set_headlights(on: bool) -> void:
-	if on and _lights.is_empty():
+	_head_target = 1.0 if on else 0.0
+	if (on or persistent_lights) and _lights.is_empty():
 		var y := 0.95 if is_bike else 0.68
 		var z := -length * 0.5 + 0.1
 		for side in ([0.0] if is_bike else [-1.0, 1.0]):
 			var l := SpotLight3D.new()
 			l.light_color = Color(1.0, 0.96, 0.88)
-			l.light_energy = 22.0 if is_bike else 18.0
+			l.set_meta("energy", 22.0 if is_bike else 18.0)
 			l.spot_range = 120.0
 			l.spot_angle = 22.0
 			l.spot_attenuation = 0.6
@@ -288,7 +300,7 @@ func set_headlights(on: bool) -> void:
 			_lights.append(l)
 		var low := SpotLight3D.new()
 		low.light_color = Color(1.0, 0.95, 0.86)
-		low.light_energy = 8.0
+		low.set_meta("energy", 8.0)
 		low.spot_range = 35.0
 		low.spot_angle = 48.0
 		low.spot_attenuation = 0.9
@@ -297,8 +309,15 @@ func set_headlights(on: bool) -> void:
 		low.rotation.x = deg_to_rad(-9.0)
 		add_child(low)
 		_lights.append(low)
+	if not persistent_lights:
+		_head_k = _head_target   # traffic: no fade needed
+	_apply_headlights()
+
+
+func _apply_headlights() -> void:
 	for l in _lights:
-		l.visible = on
+		l.visible = persistent_lights or _head_k > 0.0
+		l.light_energy = float(l.get_meta("energy", 1.0)) * _head_k
 
 
 ## Hides the car itself (cockpit view) but keeps its lights shining.
@@ -511,7 +530,8 @@ func set_brake(on: bool) -> void:
 			_brake_light.shadow_enabled = false
 			add_child(_brake_light)
 		_brake_light.position = Vector3(0, 0.55, length * 0.5 + 0.6)
-		_brake_light.visible = on
+		_brake_light.visible = on or persistent_lights
+		_brake_light.light_energy = 1.6 if on else 0.0
 
 
 ## dir: -1 left, 1 right, 0 off, 2 hazard lights (both sides).
@@ -524,6 +544,9 @@ func set_blinker(dir: int, dt: float) -> void:
 
 ## speed m/s, steer radians for front wheels, roll/pitch radians for body.
 func animate(dt: float, speed: float, steer: float, roll: float, pitch: float) -> void:
+	if persistent_lights and _head_k != _head_target:   # headlights fade on and off
+		_head_k = move_toward(_head_k, _head_target, dt * 4.0)
+		_apply_headlights()
 	_spin = fmod(_spin + speed * dt / wheel_radius, TAU)
 	for w in _wheels:
 		var base: Transform3D = w["base"]
