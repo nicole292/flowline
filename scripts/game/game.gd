@@ -31,6 +31,7 @@ extends Node3D
 ##   --flow-at=S       start Flow Drive at S seconds (store screenshots)
 ##   --fps             show the FPS counter
 ##   --popup=SIZE      NEAR MISS text size: s m l xl
+##   --memlog          with --bench: print memory every ~10 s (leak hunting)
 ##   --pause-at=S      open the pause menu at S seconds (screenshots)
 ##   --skin=TONE       hand skin tone in the cockpit view (light medium tan brown dark)
 
@@ -557,6 +558,13 @@ func _notification(what: int) -> void:
 		save.save_to_disk()
 	elif what == NOTIFICATION_WM_CLOSE_REQUEST:
 		save.save_to_disk()
+	elif what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		# Android Back is an edge swipe, right where the steering wheel and
+		# pedals are. Godot used to QUIT on it, so a thumb slipping off the
+		# wheel closed the game ("it turns off all of a sudden"). Now:
+		# driving - ignored; menus - one screen back; home - nothing.
+		if state == State.MENU:
+			menu.back_pressed()
 
 
 ## Any tap, click or key during a wreck skips straight to the results.
@@ -1492,6 +1500,12 @@ func _dev_harness(dt: float) -> void:
 		_run_time += dt
 		if _args.has("bench") and _run_time > 2.0:
 			_frame_times.append(_run_dt)
+			if _args.has("memlog") and Engine.get_process_frames() % 600 == 0:  # every ~10 s
+				print("MEM t=%.0f static=%.1fMB tex=%.1fMB video=%.1fMB objects=%d nodes=%d" % [_run_time,
+						Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0,
+						Performance.get_monitor(Performance.RENDER_TEXTURE_MEM_USED) / 1048576.0,
+						Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0,
+						Performance.get_monitor(Performance.OBJECT_COUNT), Performance.get_monitor(Performance.OBJECT_NODE_COUNT)])
 			if _run_dt > 0.05:
 				print("HITCH %.1f ms at t=%.2f dist=%d traffic=%d" % [_run_dt * 1000.0, _run_time, int(score.distance), sim.agents.size()])
 	# Every rendered frame the camera must be near the car (catches world-rebase slips).

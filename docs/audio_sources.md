@@ -6,20 +6,11 @@ commercial use, no attribution required). Sources are listed anyway.
 
 ## Engine (assets/audio/engine_low.wav, engine_high.wav)
 
-Built by `tools/audio/real_engine.py exhaust` (exhaust mic only, since 2026-11-14) from the Freesound pack
-**"The Dyno Sessions: 190E"** by **Chippy569** — a Mercedes-Benz 190E 2.3-16V
-on a dynamometer at full load. CC0 1.0.
-
-| Freesound id | Clip | Used for |
-|---|---|---|
-| 162509 | 19_2500_D6 (exhaust mic) | low layer (~2550 rpm) |
-| 162510 | 19_2500_4062 (engine-bay mic) | low layer |
-| 162508 | 19_2500_Distant | low layer |
-| 162512 | 20_6500_D6 (exhaust mic) | high layer (~6200 rpm) |
-| 162513 | 20_6500_4062 (engine-bay mic) | high layer |
-| 162511 | 20_6500_Distant | high layer |
-
-Pages: `https://freesound.org/people/Chippy569/sounds/<id>/`
+Since 2026-11-24 the game uses its original engine again: two tones
+synthesised by our own `tools/audio/make_sfx.py` (first version, commit
+e9314f6). No recordings. The CC0 Freesound "Dyno Sessions: 190E" mixes
+used from 2026-11-10 to 2026-11-24 are no longer in the game
+(`tools/audio/real_engine.py` can still rebuild them).
 
 ## Exhaust pops (assets/audio/pop_*.wav)
 

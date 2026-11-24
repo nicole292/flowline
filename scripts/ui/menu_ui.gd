@@ -951,6 +951,15 @@ func _go_back() -> void:
 	show_screen("home")
 
 
+## Android Back (an edge swipe or the back button) in the menus: one screen
+## back. Returns false on the home screen (nothing to do there).
+func back_pressed() -> bool:
+	if not visible or _current == "home" or _current == "":
+		return false
+	_go_back()
+	return true
+
+
 func current_screen() -> String:
 	return _current
 

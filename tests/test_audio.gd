@@ -64,15 +64,13 @@ func test_wavs_imported_uncompressed() -> void:
 			t.check(int(cfg.get_value("params", "compress/mode", -1)) == 0, f + " is PCM")
 
 
-func test_engine_sounds_different_on_and_off_the_gas() -> void:
-	# On the gas: the loud exhaust recording. Off (coasting/braking): the
-	# muffled off-load recording takes over.
+func test_engine_softer_off_the_gas() -> void:
+	# The original engine: lifting off makes it about 5 dB softer, gliding there.
 	var a := _director()
 	for i in 60:
-		a.update_engine(0.016, 50.0, 62.0, 1.0, false)
-	t.check(a._engine_high.volume_db > a._engine_high_off.volume_db + 15.0, "gas: on-load recording leads")
+		a.update_engine(0.016, 40.0, 62.0, 1.0, false)
+	var on_db := a._engine_low.volume_db
 	for i in 60:
-		a.update_engine(0.016, 50.0, 62.0, 0.0, false)
-	t.check(a._engine_high_off.volume_db > a._engine_high.volume_db + 15.0, "off the gas: off-load recording leads")
-	t.near(a._engine_high.pitch_scale, a._engine_high_off.pitch_scale, 0.0001, "both follow the same revs")
+		a.update_engine(0.016, 40.0, 62.0, 0.0, false)
+	t.check(a._engine_low.volume_db < on_db - 3.0, "quieter off the gas (%.1f -> %.1f dB)" % [on_db, a._engine_low.volume_db])
 	a.free()
