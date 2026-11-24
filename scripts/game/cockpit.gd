@@ -112,7 +112,7 @@ func _build_mirrors() -> void:
 		_mirror_cam.cull_mask = 1   # the world only, not this cabin
 		_mirror_cam.fov = 20.0
 		_mirror_cam.near = 0.5
-		_mirror_cam.far = 400.0
+		_mirror_cam.far = 200.0   # in a mirror this small, beyond 200 m is a few pixels
 		_mirror_vp.add_child(_mirror_cam)
 		_mirror_mat = StandardMaterial3D.new()
 		_mirror_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED

@@ -205,6 +205,7 @@ func setup(id: String, paint: Color, with_blinkers := false) -> void:
 		_wheels.append({"node": w, "base": w.transform, "steer": wname.begins_with("Wheel_F"),
 				"sign": 1.0 if w.position.x < 0.0 else -1.0})
 	_add_shadow()
+	_optimise_parts()
 	if with_blinkers:
 		_add_blinkers(aabb)
 	if _siren:
@@ -431,6 +432,25 @@ static func set_night(on: bool) -> void:
 	(shared_material("TailOff") as StandardMaterial3D).emission_energy_multiplier = 2.2 if on else 1.0
 	(shared_material("TailOn") as StandardMaterial3D).emission_energy_multiplier = 14.0 if on else 12.0
 	(shared_material("TailLens") as StandardMaterial3D).emission_energy_multiplier = 0.8 if on else 0.25
+
+
+## Performance (each car is ~36 separate draws, plus its shadow pass):
+## - only the body and its rounded panels cast sun shadows; wheels, trim,
+##   lights and plates sit inside that shadow anyway;
+## - wheels stop drawing beyond 45 m on cars (hidden under the body from
+##   behind; bikes keep them to 140 m), exhausts beyond 30 m.
+## Engine-side visibility ranges: no per-frame script cost.
+func _optimise_parts() -> void:
+	for mi in _model.find_children("*", "MeshInstance3D", true, false):
+		var g := mi as MeshInstance3D
+		var n := str(g.name)
+		if not (n.begins_with("Body") or n.begins_with("Rounded")):
+			g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		if n.begins_with("Wheel"):
+			g.visibility_range_end = 140.0 if is_bike else 45.0
+			g.visibility_range_end_margin = 5.0
+		elif n.begins_with("Exhaust"):
+			g.visibility_range_end = 30.0
 
 
 func _apply_materials(n: Node) -> void:

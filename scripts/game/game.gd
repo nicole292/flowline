@@ -31,6 +31,7 @@ extends Node3D
 ##   --flow-at=S       start Flow Drive at S seconds (store screenshots)
 ##   --fps             show the FPS counter
 ##   --popup=SIZE      NEAR MISS text size: s m l xl
+##   --census=S        at S seconds print draw calls per object group (performance work)
 ##   --memlog          with --bench: print memory every ~10 s (leak hunting)
 ##   --pause-at=S      open the pause menu at S seconds (screenshots)
 ##   --skin=TONE       hand skin tone in the cockpit view (light medium tan brown dark)
@@ -1502,6 +1503,9 @@ func _autopilot() -> Array:
 # ------------------------------------------------------------------ harness
 
 func _dev_harness(dt: float) -> void:
+	if _args.has("census") and _run_time >= float(_args["census"]):  # draw calls per object group
+		_args.erase("census")
+		_census()
 	if _args.has("slow"):  # pretend to be a weak phone: every frame takes N ms longer
 		OS.delay_msec(int(_args["slow"]))
 	if _args.has("slow-gpu"):  # ...or one whose GPU is the limit (cost scales with pixels)
@@ -1593,3 +1597,33 @@ func _quit() -> void:
 		mode, int(score.score), int(score.distance), score.near_misses, score.overtakes,
 		score.flow_activations, State.keys()[state]])
 	get_tree().quit()
+
+
+## --census=S: prints the frame's draw calls, then how many each group of
+## objects costs (hidden for two frames each). For performance work.
+func _census() -> void:
+	await RenderingServer.frame_post_draw
+	await RenderingServer.frame_post_draw
+	var base := Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)
+	print("CENSUS total draw calls: ", base)
+	var groups := {"traffic+player": _views.values() + [player_root]}
+	for c in world.get_children():
+		if c is Node3D:
+			var key: String = c.name if not str(c.name).begins_with("@") else c.get_class()
+			if not groups.has(key):
+				groups[key] = []
+			groups[key].append(c)
+	for k in groups:
+		var nodes: Array = groups[k]
+		var was := []
+		for n in nodes:
+			was.append(n.visible)
+			n.visible = false
+		await RenderingServer.frame_post_draw
+		await RenderingServer.frame_post_draw
+		var dc := Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)
+		for i in nodes.size():
+			nodes[i].visible = was[i]
+		if base - dc > 8:
+			print("CENSUS %-28s %4d nodes  -%d draw calls" % [k, nodes.size(), base - dc])
+	await RenderingServer.frame_post_draw

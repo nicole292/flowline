@@ -273,7 +273,25 @@ func wreck_ahead(lane: int, z: float, reach: float) -> bool:
 	return false
 
 
+## Cars per lane for this frame (a car changing lanes is in both): each car
+## only looks for its leader among cars in its own lane(s), not all of them
+## (was every car against every car, ~1.2 ms/frame for 40 cars on a desktop
+## CPU, several ms on a phone).
+var _buckets: Array = []
+
+
+func _fill_buckets() -> void:
+	_buckets.resize(lanes)
+	for l in lanes:
+		_buckets[l] = []
+	for b in agents:
+		_buckets[b.lane].append(b)
+		if b.target_lane != b.lane:
+			_buckets[b.target_lane].append(b)
+
+
 func _drive(dt: float, pz: float, px: float, pspeed: float, plen: float, pw: float) -> void:
+	_fill_buckets()
 	for a in agents:
 		if a.wreck:
 			continue
@@ -299,21 +317,21 @@ func _drive(dt: float, pz: float, px: float, pspeed: float, plen: float, pw: flo
 		# in any lane it occupies.
 		var leader_gap := INF
 		var leader_speed := a.desired_speed
-		for b in agents:
-			if b == a or b.dir != a.dir:
-				continue
-			var ahead := (a.z - b.z) * -a.dir
-			if ahead <= 0.0:
-				continue
-			if not (b.occupies(a.lane) or b.occupies(a.target_lane)):
-				continue
-			var g := ahead - (a.length + b.length) * 0.5
-			# Already moving out of a wreck's lane with room to spare: don't stop for it.
-			if b.wreck and a.changing() and b.lane != a.target_lane and g > 12.0:
-				continue
-			if g < leader_gap:
-				leader_gap = g
-				leader_speed = b.speed
+		var changing := a.lane != a.target_lane
+		for li in (2 if changing else 1):
+			for b in _buckets[a.lane if li == 0 else a.target_lane]:
+				if b == a or b.dir != a.dir:
+					continue
+				var ahead: float = (a.z - b.z) * -a.dir
+				if ahead <= 0.0:
+					continue
+				var g: float = ahead - (a.length + b.length) * 0.5
+				# Already moving out of a wreck's lane with room to spare: don't stop for it.
+				if b.wreck and changing and b.lane != a.target_lane and g > 12.0:
+					continue
+				if g < leader_gap:
+					leader_gap = g
+					leader_speed = b.speed
 		if a.dir < 0 and pz < a.z and absf(px - a.x) < (pw + a.width) * 0.5 + 0.5:
 			var g := a.z - pz - (a.length + plen) * 0.5
 			if g < leader_gap:
@@ -354,6 +372,8 @@ func _try_lane_change(a: Agent, pz: float, px: float, signal_s := 1.3) -> void:
 	if options.is_empty():
 		return
 	a.target_lane = options[rng.randi_range(0, options.size() - 1)]
+	if _buckets.size() == lanes:   # now also in its new lane for the rest of this frame
+		_buckets[a.target_lane].append(a)
 	a.lane_t = 0.0
 	a.signal_time = signal_s
 
